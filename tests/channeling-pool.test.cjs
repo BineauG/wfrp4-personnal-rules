@@ -16,6 +16,7 @@ function harness(options = {}) {
   const hooks = new Map();
   const api = {};
   const errors = [];
+  const warnings = [];
   const context = vm.createContext({
     console, Set, WeakMap, WeakSet, Promise,
     Hooks: { once: (key, fn) => hooks.set(key, fn), on: (key, fn) => hooks.set(key, fn), call() {} },
@@ -23,10 +24,13 @@ function harness(options = {}) {
       settings: { get: (scope, key) => settings[key] },
       modules: { get: () => ({ api }) },
       i18n: { localize: key => key },
-      wfrp4e: { config: { magicLores: { fire: 'Fire', heavens: 'Heavens' } }, utility: { logHomebrew() {} } }
+      wfrp4e: { config: {
+        magicLores: { fire: 'Fire', heavens: 'Heavens', shadow: 'Shadows', daemonology: 'Daemonology', necromancy: 'Necromancy' },
+        magicWind: { fire: 'Aqshy', heavens: 'Azyr', shadow: 'Ulgu', daemonology: 'Dhar', necromancy: 'Dhar' }
+      }, utility: { logHomebrew() {} } }
     },
     foundry: { utils: { duplicate: structuredClone } },
-    ui: { notifications: { error: message => errors.push(message) } },
+    ui: { notifications: { error: message => errors.push(message), warn: message => warnings.push(message) } },
     ChatMessage: { create() {} }
   });
   vm.runInContext(`
@@ -42,6 +46,7 @@ function harness(options = {}) {
       async computeResult() {}
       _handleMiscasts(count) { this.result.miscastCount = count; }
     }
+    class SkillTest extends TestWFRP { async postTest() {} }
   `, context);
   if (nativeSource) {
     const extract = (start, end) => nativeSource.slice(nativeSource.indexOf(start), nativeSource.indexOf(end));
@@ -84,7 +89,7 @@ function harness(options = {}) {
       }
     `, context);
   }
-  vm.runInContext('game.wfrp4e.rolls = { TestWFRP, ChannelTest, CastTest };', context);
+  vm.runInContext('game.wfrp4e.rolls = { TestWFRP, ChannelTest, CastTest, SkillTest };', context);
   vm.runInContext(moduleSource, context);
   hooks.get('ready')();
   assert.deepEqual(errors, []);
@@ -96,7 +101,12 @@ function harness(options = {}) {
     return {
       uuid: 'Actor.' + Math.random(), documentName: 'Actor', isOwner: true, items,
       system: { characteristics: { wp: { bonus: 4 } } },
-      getFlag: (scope, key) => flags.get(key),
+      getFlag(scope, key) {
+        if (flags.has(key)) return flags.get(key);
+        if (key === 'channelPools') {
+          return Object.fromEntries(Array.from(flags).filter(([flag]) => flag.startsWith('channelPools.')).map(([flag, value]) => [flag.slice(13), value]));
+        }
+      },
       async setFlag(scope, key, value) { flags.set(key, structuredClone(value)); },
       runScripts: () => [],
       async updateEmbeddedDocuments(type, updates) {
@@ -121,6 +131,12 @@ function harness(options = {}) {
     owner.items.push(item);
     return item;
   }
+  function skill(owner, id, name) {
+    const match = /^(.*?)\s*\(([^()]*)\)\s*$/.exec(name);
+    const item = { id, uuid: owner.uuid + '.Item.' + id, type: 'skill', name, specifier: match?.[2] || '', parent: owner, toObject() { return { _id: id, type: 'skill', name, system: {} }; } };
+    owner.items.push(item);
+    return item;
+  }
   function roll(kind, owner, item, sl = 2, success = true) {
     const result = { SL: String(sl), outcome: success ? 'success' : 'failure', roll: success ? 32 : 67, other: [], tooltips: {}, overcast: { enabled: false }, breakdown: { damage: { other: [] } } };
     const instance = Object.create(context.game.wfrp4e.rolls[kind].prototype);
@@ -128,7 +144,7 @@ function harness(options = {}) {
     instance.data = { preData: { item: item.id, itemData: item.toObject(), ingredientMode: 'none' }, context: {}, result };
     return instance;
   }
-  return { actor, spell, roll, api: api.channelPool, settings, context, hooks };
+  return { actor, spell, skill, roll, api: api.channelPool, settings, context, hooks, warnings };
 }
 
 test('same lore shares SL, exceeds spell CN, and is cleared by a different spell', async () => {
@@ -277,4 +293,51 @@ test('old channel cards do not modify a new pool, and actor pools stay independe
   await old.postTest();
   assert.equal(h.api.get(a, 'fire').sl, 5);
   assert.equal(h.api.get(b, 'fire').sl, 0);
+});
+
+
+test('pool steps match the sheet controls and never go below zero', async () => {
+  const h = harness(); const a = h.actor(); h.spell(a, 'spell');
+  assert.equal((await h.api.step(a, 'fire', -1)).sl, 0);
+  assert.equal(h.api.get(a, 'fire').sl, 0);
+  assert.equal((await h.api.step(a, 'fire', 1)).sl, 1);
+  assert.equal(h.api.get(a, 'fire').sl, 1);
+  assert.equal((await h.api.step(a, 'fire', -10)).sl, 0);
+  assert.equal(h.api.get(a, 'fire').sl, 0);
+});
+test('Channelling (Ulgu) skill successes add SL to the Shadows pool and rerolls correct the contribution', async () => {
+  const h = harness(); const a = h.actor(); const skill = h.skill(a, 'channel-ulgu', 'Channelling (Ulgu)');
+  const roll = h.roll('SkillTest', a, skill, 3, true);
+  await roll.postTest();
+  assert.equal(h.api.get(a, 'shadow').sl, 3);
+  assert.deepEqual(h.warnings, []);
+  roll.context.reroll = true; roll.result.SL = '5'; roll.result.outcome = 'success';
+  await roll.postTest();
+  assert.equal(h.api.get(a, 'shadow').sl, 5);
+});
+
+test('failed Channelling skill rolls do not add SL and old rolls cannot recreate a spent pool', async () => {
+  const h = harness(); const a = h.actor(); const skill = h.skill(a, 'channel-ulgu', 'Channelling (Ulgu)');
+  const roll = h.roll('SkillTest', a, skill, -2, false);
+  await roll.postTest();
+  assert.equal(h.api.get(a, 'shadow').sl, 0);
+  roll.context.reroll = true; roll.result.SL = '4'; roll.result.outcome = 'success';
+  await roll.postTest();
+  assert.equal(h.api.get(a, 'shadow').sl, 4);
+  await h.api.set(a, 'shadow', 0);
+  roll.result.SL = '6';
+  await roll.postTest();
+  assert.equal(h.api.get(a, 'shadow').sl, 0);
+});
+
+test('a Channelling skill creates a visible pool without a spell and ambiguous Dhar warns', async () => {
+  const h = harness(); const a = h.actor(); const ulgu = h.skill(a, 'channel-ulgu', 'Channelling (Ulgu)');
+  await h.roll('SkillTest', a, ulgu, 2, true).postTest();
+  assert.equal(h.api.get(a, 'shadow').sl, 2);
+  const dhar = h.skill(a, 'channel-dhar', 'Channelling (Dhar)');
+  h.spell(a, 'daemon', 'daemonology'); h.spell(a, 'necro', 'necromancy');
+  await h.roll('SkillTest', a, dhar, 3, true).postTest();
+  assert.equal(h.warnings.length, 1);
+  assert.equal(h.api.get(a, 'daemonology').sl, 0);
+  assert.equal(h.api.get(a, 'necromancy').sl, 0);
 });

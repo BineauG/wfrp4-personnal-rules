@@ -124,6 +124,9 @@
   "WFRP4PR.ChannelPool.Label": "Réserve de canalisation",
   "WFRP4PR.ChannelPool.InvalidSL": "Les DR doivent être un entier positif ou nul.",
   "WFRP4PR.ChannelPool.NoPermission": "Vous ne pouvez pas modifier cette réserve.",
-  "WFRP4PR.ChannelPool.NoLore": "Ce personnage ne possède aucun sort de ce domaine.",
-  "WFRP4PR.ChannelPool.UnsupportedVersion": "Le pool de canalisation ne peut pas être activé sur cette version de WFRP4E."
+  "WFRP4PR.ChannelPool.NoLore": "Ce personnage ne possède ni sort ni compétence de Channelling pour ce domaine.",
+  "WFRP4PR.ChannelPool.UnsupportedVersion": "Le pool de canalisation ne peut pas être activé sur cette version de WFRP4E.",
+  "WFRP4PR.ChannelPool.Heading": "Channelling",
+  "WFRP4PR.ChannelPool.CounterHint": "Clic gauche : +1 DR ; clic droit : -1 DR ; Ctrl : par 10.",
+  "WFRP4PR.ChannelPool.UnknownWind": "Le vent de ce test de Channelling est absent ou ambigu : aucune réserve modifiée. Utilisez une spécialisation comme Channelling (Ulgu)."
 }

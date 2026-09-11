@@ -2,6 +2,7 @@
 (() => {
   const MODULE_ID = "wfrp4-personnal-rules";
   const CONTEXT_KEY = "wfrp4prChannelPool";
+  const SKILL_CONTEXT_KEY = "wfrp4prChannelSkill";
   const queues = new WeakMap();
   const pendingChannel = new WeakMap();
   const suppressNativeClear = new WeakSet();
@@ -18,6 +19,35 @@
     const lores = Array.isArray(value) ? value : [value];
     const lore = lores.includes(item.system.lore?.chosen) ? item.system.lore.chosen : lores[0];
     return typeof lore === "string" && lore !== "petty" && /^[a-z][a-z0-9_-]*$/.test(lore) ? lore : null;
+  }
+
+  const normalize = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+
+  function channelSkillWind(skill) {
+    if (skill?.type !== "skill") return null;
+    const match = /^(.*?)\s*\(([^()]*)\)\s*$/.exec(skill.name || "");
+    const base = normalize(match ? match[1] : skill.name);
+    const names = ["channelling", "channeling", normalize(game.i18n.localize("NAME.Channelling"))];
+    if (!names.includes(base)) return null;
+    return normalize(skill.specifier || match?.[2]);
+  }
+
+  function storedLores(actor) {
+    return Object.keys(actor.getFlag(MODULE_ID, "channelPools") || {}).filter(key => /^lore-[a-z][a-z0-9_-]*$/.test(key)).map(key => key.slice(5));
+  }
+
+  function getSkillLore(actor, skill) {
+    const wind = channelSkillWind(skill);
+    if (!wind || wind === "none") return null;
+    const matches = Object.entries(game.wfrp4e.config.magicWind || {}).filter(([lore, name]) => lore !== "petty" && /^[a-z][a-z0-9_-]*$/.test(lore) && [name, game.i18n.localize(name), lore, loreLabel(lore)].some(value => normalize(value) === wind)).map(([lore]) => lore);
+    if (matches.length === 1) return matches[0];
+    const known = new Set([...storedLores(actor), ...Array.from(actor.items || []).map(getLore).filter(Boolean)]);
+    const owned = matches.filter(lore => known.has(lore));
+    return owned.length === 1 ? owned[0] : null;
+  }
+
+  function actorLores(actor) {
+    return new Set([...storedLores(actor), ...Array.from(actor.items || []).flatMap(item => [getLore(item), getSkillLore(actor, item)].filter(Boolean))]);
   }
 
   function isOwnedSpell(item, actor) {
@@ -63,11 +93,42 @@
 
   async function setPool(actor, lore, sl) {
     if (!actor.isOwner) throw new Error(localize("NoPermission"));
-    if (!Array.from(actor.items).some(item => getLore(item) === lore)) throw new Error(localize("NoLore"));
+    if (!actorLores(actor).has(lore)) throw new Error(localize("NoLore"));
     return queue(actor, () => {
       const current = getPool(actor, lore);
       return savePool(actor, lore, { sl, epoch: current.epoch + 1, revision: current.revision + 1, critical: false });
     });
+  }
+
+  function stepPool(actor, lore, delta) {
+    if (!actor.isOwner) return Promise.reject(new Error(localize("NoPermission")));
+    return queue(actor, () => {
+      const current = getPool(actor, lore);
+      return savePool(actor, lore, { ...current, sl: Math.max(0, current.sl + delta), epoch: current.epoch + 1, revision: current.revision + 1, critical: false });
+    });
+  }
+
+  function patchSkillTests(SkillTest) {
+    const nativePost = SkillTest.prototype.postTest;
+    SkillTest.prototype.postTest = async function(...args) {
+      const result = await nativePost.apply(this, args);
+      const skill = this.item;
+      if (!this.actor?.isOwner || channelSkillWind(skill) === null || this.context.unopposed) return result;
+      const previous = this.context[SKILL_CONTEXT_KEY];
+      const lore = previous?.lore || getSkillLore(this.actor, skill);
+      if (!lore) { if (this.succeeded) ui.notifications.warn(localize("UnknownWind")); return result; }
+      if (!previous && (this.context.reroll || this.context.edited)) return result;
+      return queue(this.actor, async () => {
+        const pool = getPool(this.actor, lore);
+        if (previous && previous.epoch !== pool.epoch) return result;
+        const contribution = this.succeeded ? Math.max(0, Number(this.result.SL)) : 0;
+        if (!Number.isSafeInteger(contribution)) throw new Error(localize("InvalidSL"));
+        const delta = contribution - (previous?.contribution || 0);
+        if (delta !== 0) await savePool(this.actor, lore, { ...pool, sl: Math.max(0, pool.sl + delta), revision: pool.revision + 1 });
+        this.context[SKILL_CONTEXT_KEY] = { lore, epoch: pool.epoch, contribution };
+        return result;
+      });
+    };
   }
 
   // The view is local to a Test. It never changes the spell document or global settings.
@@ -114,11 +175,12 @@
   }
 
   function patchTests() {
-    const { TestWFRP, ChannelTest, CastTest } = game.wfrp4e.rolls;
+    const { TestWFRP, ChannelTest, CastTest, SkillTest } = game.wfrp4e.rolls;
     const nativeItem = Object.getOwnPropertyDescriptor(TestWFRP.prototype, "item")?.get;
-    if (!nativeItem || !ChannelTest.prototype.updateChannelledItems || !CastTest.prototype.postTest) {
+    if (!nativeItem || !ChannelTest.prototype.updateChannelledItems || !CastTest.prototype.postTest || !SkillTest?.prototype.postTest) {
       throw new Error(localize("UnsupportedVersion"));
     }
+    patchSkillTests(SkillTest);
     for (const TestClass of [ChannelTest, CastTest]) {
       Object.defineProperty(TestClass.prototype, "item", {
         configurable: true,
@@ -220,76 +282,61 @@
   function renderPool(app, html) {
     const actor = app.actor || (app.document?.documentName === "Actor" ? app.document : null);
     const root = html?.querySelectorAll ? html : html?.[0];
-    const list = root?.querySelector('.sheet-list.spells');
+    const list = root?.querySelector(".sheet-list.spells");
     if (!actor || !list) return;
-    const header = list.querySelector(':scope > .list-header');
+    const header = list.querySelector(":scope > .list-header");
     if (!header) return;
-    list.querySelector(':scope > .wfrp4pr-channel-pools')?.remove();
-    const rows = Array.from(list.querySelectorAll(':scope > .list-content > .list-row'));
-    const lores = new Set();
+    root.querySelector(".wfrp4pr-channelling")?.remove();
+    const rows = Array.from(list.querySelectorAll(":scope > .list-content > .list-row"));
+    const lores = actorLores(actor);
     let allPooled = rows.length > 0;
     for (const row of rows) {
       const item = Array.from(actor.items).find(item => item.uuid === row.dataset.uuid);
       const lore = getLore(item);
       if (!lore) { allPooled = false; continue; }
-      lores.add(lore);
-      row.querySelector(':scope > .progress-bar')?.remove();
+      row.querySelector(":scope > .progress-bar")?.remove();
       const counter = row.querySelector('[data-path="system.cn.SL"]');
-      if (counter) {
-        const placeholder = document.createElement('span');
-        placeholder.className = 'tiny wfrp4pr-pooled-sl';
-        counter.replaceWith(placeholder);
-      }
+      if (counter) { const placeholder = document.createElement("span"); placeholder.className = "tiny wfrp4pr-pooled-sl"; counter.replaceWith(placeholder); }
     }
+    const slHeader = Array.from(header.children).filter(node => node.classList.contains("tiny"))[1];
+    if (slHeader) slHeader.classList.toggle("wfrp4pr-pool-hidden", allPooled);
+    for (const cell of list.querySelectorAll(".wfrp4pr-pooled-sl")) cell.classList.toggle("wfrp4pr-pool-hidden", allPooled);
     if (!lores.size) return;
-    const slHeader = Array.from(header.children).filter(node => node.classList.contains('tiny'))[1];
-    if (slHeader) slHeader.classList.toggle('wfrp4pr-pool-hidden', allPooled);
-    for (const cell of list.querySelectorAll('.wfrp4pr-pooled-sl')) cell.classList.toggle('wfrp4pr-pool-hidden', allPooled);
-
-    const pools = document.createElement('div');
-    pools.className = 'wfrp4pr-channel-pools';
+    const section = document.createElement("div"); section.className = "sheet-list wfrp4pr-channelling";
+    const sectionHeader = document.createElement("div"); sectionHeader.className = "list-header row-content";
+    const title = document.createElement("div"); title.className = "list-name"; title.textContent = localize("Heading");
+    const ingredientSpacer = document.createElement("div"); ingredientSpacer.className = "flex";
+    const cnSpacer = document.createElement("div"); cnSpacer.className = "tiny";
+    const slTitle = document.createElement("div"); slTitle.className = "tiny"; slTitle.textContent = "SL";
+    const memorizedSpacer = document.createElement("div"); memorizedSpacer.className = "tiny";
+    const controlsSpacer = document.createElement("div"); controlsSpacer.className = "list-controls";
+    sectionHeader.append(title, ingredientSpacer, cnSpacer, slTitle, memorizedSpacer, controlsSpacer);
+    const content = document.createElement("div"); content.className = "list-content";
     for (const lore of lores) {
-      const pool = getPool(actor, lore);
-      const bar = document.createElement('div');
-      bar.className = 'wfrp4pr-channel-pool';
-      bar.dataset.lore = lore;
-      const label = document.createElement('label');
-      label.textContent = `${loreLabel(lore)} — ${localize('Label')}`;
-      const input = document.createElement('input');
-      input.type = 'number';
-      input.min = '0';
-      input.step = '1';
-      input.value = String(pool.sl);
-      input.disabled = !actor.isOwner;
-      input.setAttribute('aria-label', `${loreLabel(lore)} — ${localize('Label')}`);
-      label.append(input, document.createTextNode(game.i18n.localize('SL')));
-      input.addEventListener('change', async event => {
-        event.stopPropagation();
-        if (input.disabled) return;
-        const sl = input.value === '' ? NaN : Number(input.value);
-        input.disabled = true;
-        try { await setPool(actor, lore, sl); }
-        catch (error) { input.value = String(getPool(actor, lore).sl); ui.notifications.error(error.message); }
-        finally { input.disabled = !actor.isOwner; }
-      });
-      const track = document.createElement('div');
-      track.className = 'progress-bar wfrp4pr-pool-track';
-      track.setAttribute('aria-hidden', 'true');
-      const fill = document.createElement('div');
-      fill.className = `fill ${lore}`;
-      // A segment is one SL; the numeric total stays exact even beyond the visible track.
-      fill.style.width = `min(100%, ${pool.sl * 12}px)`;
-      track.append(fill);
-      bar.append(label, track);
-      pools.append(bar);
+      const row = document.createElement("div"); row.className = "list-row"; row.dataset.lore = lore;
+      const line = document.createElement("div"); line.className = "row-content";
+      const name = document.createElement("div"); name.className = "list-name";
+      const wind = game.wfrp4e.config.magicWind?.[lore]; const windName = wind ? game.i18n.localize(wind) : "";
+      name.textContent = windName && normalize(windName) !== "none" ? windName + " — " + loreLabel(lore) : loreLabel(lore);
+      const ingredient = document.createElement("div"); ingredient.className = "flex";
+      const cn = document.createElement("div"); cn.className = "tiny";
+      const counter = document.createElement(actor.isOwner ? "a" : "span"); counter.className = "tiny prevent-context wfrp4pr-pool-counter"; counter.textContent = String(getPool(actor, lore).sl); counter.setAttribute("aria-label", loreLabel(lore) + " — SL");
+      const memorized = document.createElement("div"); memorized.className = "tiny";
+      const controls = document.createElement("div"); controls.className = "list-controls";
+      if (actor.isOwner) {
+        counter.setAttribute("role", "button"); counter.tabIndex = 0; counter.dataset.tooltip = localize("CounterHint");
+        const step = async event => { event.preventDefault(); event.stopPropagation(); const delta = (event.type === "contextmenu" ? -1 : 1) * (event.ctrlKey ? 10 : 1); try { await stepPool(actor, lore, delta); counter.textContent = String(getPool(actor, lore).sl); } catch (error) { ui.notifications.error(error.message); } };
+        counter.addEventListener("click", step); counter.addEventListener("contextmenu", step); counter.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") step(event); });
+      }
+      line.append(name, ingredient, cn, counter, memorized, controls); row.append(line); content.append(row);
     }
-    header.after(pools);
+    section.append(sectionHeader, content); list.before(section);
   }
 
   Hooks.once('ready', () => {
     try {
       patchTests();
-      (game.modules.get(MODULE_ID).api ||= {}).channelPool = { get: getPool, set: setPool, getLore };
+      (game.modules.get(MODULE_ID).api ||= {}).channelPool = { get: getPool, set: setPool, step: stepPool, getLore };
       Hooks.on('renderApplicationV2', renderPool);
       Hooks.on('renderActorSheet', renderPool);
       Hooks.on('renderChatMessageHTML', (message, html) => {

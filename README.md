@@ -107,7 +107,7 @@ Les DR de canalisation sont communs aux sorts d'un même Lore, stockés sur l'ac
 - Le cast utilise la réserve du Lore choisi. Il vide toute cette réserve, même en cas d'échec, sauf si l'option native de conservation après échec est activée.
 - Les seuils de réussite restent natifs : sans canalisation partielle, une réserve inférieure à la CN ne réduit pas celle-ci. Avec l'option native de canalisation partielle ou Winds of Magic, elle réduit la CN.
 - Chaque Lore possède sa propre réserve. Pour un sort à plusieurs Lores, le Lore choisi est utilisé (le premier si aucun n'est choisi). La petite magie et les rituels conservent leur fonctionnement natif.
-- La fiche affiche les réserves sous l'en-tête Lore, avec une barre colorée (un segment par DR) et un total modifiable par le propriétaire. Le total reste lisible même lorsque la barre est pleine. Les DR et les barres par sort sont retirés pour les sorts concernés.
+- La fiche affiche une section Channelling distincte, au même format que Petty Spells et Lore Spells. Chaque vent a une ligne et son compteur sous SL, sans barre colorée : clic gauche +1, clic droit -1 (minimum 0), Ctrl par 10. Les DR et barres individuels des sorts concernés sont retirés.
 - Les DR existants sont repris à la première utilisation : somme des anciens compteurs indépendants, ou maximum lorsque Winds of Magic les partageait déjà. Les anciens compteurs sont ensuite remis à zéro, la réserve étant enregistrée sur l'acteur.
 - Les relances utilisent la réserve enregistrée au moment du premier jet. Modifier un ancien jet ne recrée pas une réserve déjà dépensée et ne vide pas une nouvelle réserve.
 
@@ -115,3 +115,7 @@ Vérifications : `node --test tests/*.test.cjs`.
 Pour exécuter les tests de canalisation avec les méthodes du système installé, définir `WFRP4E_SYSTEM_SOURCE` vers son fichier `wfrp4e.js`, puis lancer `node --test tests/channeling-pool.test.cjs`. Aucun code du système n'est distribué avec ce module.
 
 API : `game.modules.get("wfrp4-personnal-rules").api.channelPool.get(actor, "fire")` pour lire la réserve, et `await game.modules.get("wfrp4-personnal-rules").api.channelPool.set(actor, "fire", 4)` pour la modifier.
+
+### Compétence Channelling (1.1.1)
+
+Un test de compétence spécialisé réussi, par exemple `Channelling (Ulgu)`, ajoute ses DR positifs au pool du Lore correspondant (ici Ombres). Un échec ou une réussite à 0 DR n’ajoute rien. Le test reste un jet de compétence normal. La réserve fonctionne même avant l’acquisition d’un sort de ce Lore. Une relance corrige la contribution précédente ; elle ne recrée pas des DR déjà dépensés. Un vent ambigu (par exemple Dhar avec plusieurs Lores connus) n’est pas attribué arbitrairement et déclenche un avertissement.

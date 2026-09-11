@@ -124,6 +124,9 @@
   "WFRP4PR.ChannelPool.Label": "Channelling pool",
   "WFRP4PR.ChannelPool.InvalidSL": "SL must be a non-negative integer.",
   "WFRP4PR.ChannelPool.NoPermission": "You cannot edit this pool.",
-  "WFRP4PR.ChannelPool.NoLore": "This actor has no spell from that lore.",
-  "WFRP4PR.ChannelPool.UnsupportedVersion": "The channelling pool cannot be enabled on this WFRP4E version."
+  "WFRP4PR.ChannelPool.NoLore": "This actor has no spell or Channelling skill for that lore.",
+  "WFRP4PR.ChannelPool.UnsupportedVersion": "The channelling pool cannot be enabled on this WFRP4E version.",
+  "WFRP4PR.ChannelPool.Heading": "Channelling",
+  "WFRP4PR.ChannelPool.CounterHint": "Left click: +1 SL; right click: -1 SL; Ctrl: steps of 10.",
+  "WFRP4PR.ChannelPool.UnknownWind": "This Channelling test has no unambiguous wind: no pool changed. Use a specialization such as Channelling (Ulgu)."
 }

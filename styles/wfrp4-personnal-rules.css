@@ -28,40 +28,6 @@
 }
 
 .wfrp4pr-pool-hidden { display: none !important; }
-.wfrp4pr-channel-pools {
-  padding: 0.35rem 0.5rem;
-  border-bottom: 1px solid var(--color-border-light-primary, #8d7965);
+.wfrp4pr-channelling .wfrp4pr-pool-counter {
+  cursor: pointer;
 }
-.wfrp4pr-channel-pool + .wfrp4pr-channel-pool { margin-top: 0.4rem; }
-.wfrp4pr-channel-pool label {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-weight: bold;
-}
-.wfrp4pr-channel-pool input[type="number"] {
-  width: 4rem;
-  height: 1.6rem;
-  margin-left: auto;
-  text-align: center;
-  flex: 0 0 4rem;
-}
-.wfrp4pr-channel-pool .wfrp4pr-pool-track {
-  height: 8px;
-  margin-top: 0.2rem;
-  background: rgba(0, 0, 0, 0.18);
-  overflow: hidden;
-}
-.wfrp4pr-channel-pool .fill {
-  height: 100%;
-  background-color: #80639b;
-  background-image: repeating-linear-gradient(to right, transparent 0 10px, rgba(0, 0, 0, 0.4) 10px 12px);
-}
-.wfrp4pr-channel-pool .fill.fire { background-color: #c65232; }
-.wfrp4pr-channel-pool .fill.heavens { background-color: #3e87c7; }
-.wfrp4pr-channel-pool .fill.life { background-color: #568c42; }
-.wfrp4pr-channel-pool .fill.beasts { background-color: #a57138; }
-.wfrp4pr-channel-pool .fill.metal { background-color: #bf9b35; }
-.wfrp4pr-channel-pool .fill.light { background-color: #e5d5a5; }
-.wfrp4pr-channel-pool .fill.death { background-color: #9154ac; }
-.wfrp4pr-channel-pool .fill.shadow { background-color: #737784; }
