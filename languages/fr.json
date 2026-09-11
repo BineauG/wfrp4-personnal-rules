@@ -127,6 +127,9 @@
   "WFRP4PR.ChannelPool.NoLore": "Ce personnage ne possède ni sort ni compétence de Channelling pour ce domaine.",
   "WFRP4PR.ChannelPool.UnsupportedVersion": "Le pool de canalisation ne peut pas être activé sur cette version de WFRP4E.",
   "WFRP4PR.ChannelPool.Heading": "Channelling",
-  "WFRP4PR.ChannelPool.CounterHint": "Clic gauche : +1 DR ; clic droit : -1 DR ; Ctrl : par 10.",
+  "WFRP4PR.ChannelPool.Roll": "Canaliser",
+  "WFRP4PR.ChannelPool.Menu": "Options de canalisation",
+  "WFRP4PR.ChannelPool.Remove": "Retirer la canalisation",
+  "WFRP4PR.ChannelPool.NoSkill": "Ce personnage ne possède pas la compétence de Channelling correspondant à ce Lore.",
   "WFRP4PR.ChannelPool.UnknownWind": "Le vent de ce test de Channelling est absent ou ambigu : aucune réserve modifiée. Utilisez une spécialisation comme Channelling (Ulgu)."
 }

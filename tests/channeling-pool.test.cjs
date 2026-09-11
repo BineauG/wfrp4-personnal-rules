@@ -305,6 +305,41 @@ test('pool steps match the sheet controls and never go below zero', async () => 
   assert.equal((await h.api.step(a, 'fire', -10)).sl, 0);
   assert.equal(h.api.get(a, 'fire').sl, 0);
 });
+test('the lore icon rolls the matching owned Channelling skill', async () => {
+  const h = harness(); const a = h.actor();
+  const skill = h.skill(a, 'channel-ulgu', 'Channelling (Ulgu)');
+  let setup;
+  let rolls = 0;
+  a.setupSkill = async (selected, options) => {
+    setup = { selected, options };
+    return { async roll() { rolls += 1; return 'rolled'; } };
+  };
+
+  assert.equal(await h.api.roll(a, 'shadow'), 'rolled');
+  assert.equal(setup.selected, skill);
+  assert.equal(setup.options.skipTargets, true);
+  assert.match(setup.options.title, /shadow$/);
+  assert.equal(rolls, 1);
+
+  const withoutSkill = h.actor();
+  h.spell(withoutSkill, 'shadow-spell', 'shadow');
+  await assert.rejects(h.api.roll(withoutSkill, 'shadow'), /NoSkill/);
+});
+
+test('removing a Channelling row clears and hides it until a new successful test', async () => {
+  const h = harness(); const a = h.actor();
+  const skill = h.skill(a, 'channel-aqshy', 'Channelling (Aqshy)');
+  h.spell(a, 'fire-spell', 'fire');
+  await h.api.set(a, 'fire', 4);
+  await h.api.remove(a, 'fire');
+
+  assert.equal(h.api.get(a, 'fire').sl, 0);
+  assert.equal(a.getFlag(moduleId, 'hiddenChannelPools.lore-fire'), true);
+
+  await h.roll('SkillTest', a, skill, 3, true).postTest();
+  assert.equal(h.api.get(a, 'fire').sl, 3);
+  assert.equal(a.getFlag(moduleId, 'hiddenChannelPools.lore-fire'), false);
+});
 test('Channelling (Ulgu) skill successes add SL to the Shadows pool and rerolls correct the contribution', async () => {
   const h = harness(); const a = h.actor(); const skill = h.skill(a, 'channel-ulgu', 'Channelling (Ulgu)');
   const roll = h.roll('SkillTest', a, skill, 3, true);

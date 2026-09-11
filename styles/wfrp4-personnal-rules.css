@@ -28,6 +28,72 @@
 }
 
 .wfrp4pr-pool-hidden { display: none !important; }
+
 .wfrp4pr-channelling .wfrp4pr-pool-counter {
   cursor: pointer;
+}
+
+.wfrp4pr-channelling .wfrp4pr-lore-name {
+  display: flex;
+  align-items: center;
+}
+
+.wfrp4pr-channelling .wfrp4pr-lore-roll {
+  position: relative;
+  display: inline-grid;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  margin-right: 0.5rem;
+  place-items: center;
+}
+
+.wfrp4pr-channelling .wfrp4pr-lore-roll img {
+  grid-area: 1 / 1;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  object-fit: cover;
+}
+
+.wfrp4pr-channelling .wfrp4pr-lore-die {
+  grid-area: 1 / 1;
+  z-index: 1;
+  font-size: 1.25rem;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.wfrp4pr-channelling .wfrp4pr-lore-roll.rollable:hover img {
+  opacity: 0.25;
+}
+
+.wfrp4pr-channelling .wfrp4pr-lore-roll.rollable:hover .wfrp4pr-lore-die {
+  opacity: 1;
+}
+
+.wfrp4pr-channelling .wfrp4pr-pool-controls {
+  position: relative;
+  overflow: visible;
+}
+
+.wfrp4pr-channelling .wfrp4pr-pool-menu {
+  position: absolute;
+  z-index: 20;
+  top: 1.25rem;
+  right: 0;
+  min-width: 10rem;
+  padding: 0.25rem;
+  white-space: nowrap;
+}
+
+.wfrp4pr-channelling .wfrp4pr-pool-menu[hidden] {
+  display: none !important;
+}
+
+.wfrp4pr-channelling .wfrp4pr-pool-menu .control {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.25rem 0.4rem;
 }

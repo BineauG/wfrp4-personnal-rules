@@ -127,6 +127,9 @@
   "WFRP4PR.ChannelPool.NoLore": "This actor has no spell or Channelling skill for that lore.",
   "WFRP4PR.ChannelPool.UnsupportedVersion": "The channelling pool cannot be enabled on this WFRP4E version.",
   "WFRP4PR.ChannelPool.Heading": "Channelling",
-  "WFRP4PR.ChannelPool.CounterHint": "Left click: +1 SL; right click: -1 SL; Ctrl: steps of 10.",
+  "WFRP4PR.ChannelPool.Roll": "Channel",
+  "WFRP4PR.ChannelPool.Menu": "Channelling options",
+  "WFRP4PR.ChannelPool.Remove": "Remove Channelling",
+  "WFRP4PR.ChannelPool.NoSkill": "This character does not have the Channelling skill for this Lore.",
   "WFRP4PR.ChannelPool.UnknownWind": "This Channelling test has no unambiguous wind: no pool changed. Use a specialization such as Channelling (Ulgu)."
 }

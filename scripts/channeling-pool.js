@@ -11,6 +11,7 @@
   const setting = key => game.settings.get("wfrp4e", key);
   const localize = key => game.i18n.localize(`WFRP4PR.ChannelPool.${key}`);
   const flagKey = lore => `channelPools.lore-${lore}`;
+  const hiddenFlagKey = lore => `hiddenChannelPools.lore-${lore}`;
   const loreLabel = lore => game.i18n.localize(game.wfrp4e.config.magicLores[lore] || lore);
 
   function getLore(item) {
@@ -46,8 +47,13 @@
     return owned.length === 1 ? owned[0] : null;
   }
 
+  function getChannelSkill(actor, lore) {
+    return Array.from(actor.items || []).find(item => getSkillLore(actor, item) === lore) || null;
+  }
+
   function actorLores(actor) {
-    return new Set([...storedLores(actor), ...Array.from(actor.items || []).flatMap(item => [getLore(item), getSkillLore(actor, item)].filter(Boolean))]);
+    const lores = [...storedLores(actor), ...Array.from(actor.items || []).flatMap(item => [getLore(item), getSkillLore(actor, item)].filter(Boolean))];
+    return new Set(lores.filter(lore => !actor.getFlag(MODULE_ID, hiddenFlagKey(lore))));
   }
 
   function isOwnedSpell(item, actor) {
@@ -82,6 +88,9 @@
     if (!Number.isSafeInteger(pool.sl) || pool.sl < 0) throw new Error(localize("InvalidSL"));
     const firstWrite = !actor.getFlag(MODULE_ID, flagKey(lore));
     await actor.setFlag(MODULE_ID, flagKey(lore), pool);
+    if (pool.sl > 0 && actor.getFlag(MODULE_ID, hiddenFlagKey(lore))) {
+      await actor.setFlag(MODULE_ID, hiddenFlagKey(lore), false);
+    }
     if (firstWrite) {
       // Save the shared balance first, then retire legacy per-spell counters.
       const updates = Array.from(actor.items).filter(item => getLore(item) === lore && item.system.cn.SL)
@@ -106,6 +115,26 @@
       const current = getPool(actor, lore);
       return savePool(actor, lore, { ...current, sl: Math.max(0, current.sl + delta), epoch: current.epoch + 1, revision: current.revision + 1, critical: false });
     });
+  }
+
+  function removePool(actor, lore) {
+    if (!actor.isOwner) return Promise.reject(new Error(localize("NoPermission")));
+    return queue(actor, async () => {
+      const current = getPool(actor, lore);
+      await savePool(actor, lore, { sl: 0, epoch: current.epoch + 1, revision: current.revision + 1, critical: false });
+      await actor.setFlag(MODULE_ID, hiddenFlagKey(lore), true);
+    });
+  }
+
+  async function rollPool(actor, lore) {
+    if (!actor.isOwner) throw new Error(localize("NoPermission"));
+    const skill = getChannelSkill(actor, lore);
+    if (!skill) throw new Error(localize("NoSkill"));
+    const test = await actor.setupSkill(skill, {
+      skipTargets: true,
+      title: `${game.i18n.localize("ChannellingTest")} - ${lore}`
+    });
+    return test?.roll();
   }
 
   function patchSkillTests(SkillTest) {
@@ -286,6 +315,7 @@
     if (!actor || !list) return;
     const header = list.querySelector(":scope > .list-header");
     if (!header) return;
+
     root.querySelector(".wfrp4pr-channelling")?.remove();
     const rows = Array.from(list.querySelectorAll(":scope > .list-content > .list-row"));
     const lores = actorLores(actor);
@@ -293,50 +323,174 @@
     for (const row of rows) {
       const item = Array.from(actor.items).find(item => item.uuid === row.dataset.uuid);
       const lore = getLore(item);
-      if (!lore) { allPooled = false; continue; }
+      if (!lore) {
+        allPooled = false;
+        continue;
+      }
       row.querySelector(":scope > .progress-bar")?.remove();
       const counter = row.querySelector('[data-path="system.cn.SL"]');
-      if (counter) { const placeholder = document.createElement("span"); placeholder.className = "tiny wfrp4pr-pooled-sl"; counter.replaceWith(placeholder); }
+      if (counter) {
+        const placeholder = document.createElement("span");
+        placeholder.className = "tiny wfrp4pr-pooled-sl";
+        counter.replaceWith(placeholder);
+      }
     }
     const slHeader = Array.from(header.children).filter(node => node.classList.contains("tiny"))[1];
     if (slHeader) slHeader.classList.toggle("wfrp4pr-pool-hidden", allPooled);
-    for (const cell of list.querySelectorAll(".wfrp4pr-pooled-sl")) cell.classList.toggle("wfrp4pr-pool-hidden", allPooled);
-    if (!lores.size) return;
-    const section = document.createElement("div"); section.className = "sheet-list wfrp4pr-channelling";
-    const sectionHeader = document.createElement("div"); sectionHeader.className = "list-header row-content";
-    const title = document.createElement("div"); title.className = "list-name"; title.textContent = localize("Heading");
-    const ingredientSpacer = document.createElement("div"); ingredientSpacer.className = "flex";
-    const cnSpacer = document.createElement("div"); cnSpacer.className = "tiny";
-    const slTitle = document.createElement("div"); slTitle.className = "tiny"; slTitle.textContent = "SL";
-    const memorizedSpacer = document.createElement("div"); memorizedSpacer.className = "tiny";
-    const controlsSpacer = document.createElement("div"); controlsSpacer.className = "list-controls";
-    sectionHeader.append(title, ingredientSpacer, cnSpacer, slTitle, memorizedSpacer, controlsSpacer);
-    const content = document.createElement("div"); content.className = "list-content";
-    for (const lore of lores) {
-      const row = document.createElement("div"); row.className = "list-row"; row.dataset.lore = lore;
-      const line = document.createElement("div"); line.className = "row-content";
-      const name = document.createElement("div"); name.className = "list-name";
-      const wind = game.wfrp4e.config.magicWind?.[lore]; const windName = wind ? game.i18n.localize(wind) : "";
-      name.textContent = windName && normalize(windName) !== "none" ? windName + " — " + loreLabel(lore) : loreLabel(lore);
-      const ingredient = document.createElement("div"); ingredient.className = "flex";
-      const cn = document.createElement("div"); cn.className = "tiny";
-      const counter = document.createElement(actor.isOwner ? "a" : "span"); counter.className = "tiny prevent-context wfrp4pr-pool-counter"; counter.textContent = String(getPool(actor, lore).sl); counter.setAttribute("aria-label", loreLabel(lore) + " — SL");
-      const memorized = document.createElement("div"); memorized.className = "tiny";
-      const controls = document.createElement("div"); controls.className = "list-controls";
-      if (actor.isOwner) {
-        counter.setAttribute("role", "button"); counter.tabIndex = 0; counter.dataset.tooltip = localize("CounterHint");
-        const step = async event => { event.preventDefault(); event.stopPropagation(); const delta = (event.type === "contextmenu" ? -1 : 1) * (event.ctrlKey ? 10 : 1); try { await stepPool(actor, lore, delta); counter.textContent = String(getPool(actor, lore).sl); } catch (error) { ui.notifications.error(error.message); } };
-        counter.addEventListener("click", step); counter.addEventListener("contextmenu", step); counter.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") step(event); });
-      }
-      line.append(name, ingredient, cn, counter, memorized, controls); row.append(line); content.append(row);
+    for (const cell of list.querySelectorAll(".wfrp4pr-pooled-sl")) {
+      cell.classList.toggle("wfrp4pr-pool-hidden", allPooled);
     }
-    section.append(sectionHeader, content); list.before(section);
+    if (!lores.size) return;
+
+    const section = document.createElement("div");
+    section.className = "sheet-list wfrp4pr-channelling";
+    const sectionHeader = document.createElement("div");
+    sectionHeader.className = "list-header row-content";
+    const title = document.createElement("div");
+    title.className = "list-name";
+    title.textContent = localize("Heading");
+    const ingredientSpacer = document.createElement("div");
+    ingredientSpacer.className = "flex";
+    const cnSpacer = document.createElement("div");
+    cnSpacer.className = "tiny";
+    const slTitle = document.createElement("div");
+    slTitle.className = "tiny";
+    slTitle.textContent = "SL";
+    const controlsSpacer = document.createElement("div");
+    controlsSpacer.className = "list-controls";
+    sectionHeader.append(title, ingredientSpacer, cnSpacer, slTitle, controlsSpacer);
+
+    const content = document.createElement("div");
+    content.className = "list-content";
+    for (const lore of lores) {
+      const row = document.createElement("div");
+      row.className = "list-row";
+      row.dataset.lore = lore;
+      const line = document.createElement("div");
+      line.className = "row-content";
+
+      const name = document.createElement("div");
+      name.className = "list-name wfrp4pr-lore-name";
+      const skill = getChannelSkill(actor, lore);
+      const rollButton = document.createElement(actor.isOwner && skill ? "a" : "span");
+      rollButton.className = "wfrp4pr-lore-roll" + (actor.isOwner && skill ? " rollable" : "");
+      const image = document.createElement("img");
+      image.src = "modules/wfrp4e-core/icons/spells/" + lore + ".png";
+      image.alt = "";
+      const die = document.createElement("i");
+      die.className = "fas fa-dice wfrp4pr-lore-die";
+      rollButton.append(image, die);
+      if (actor.isOwner && skill) {
+        rollButton.setAttribute("role", "button");
+        rollButton.tabIndex = 0;
+        rollButton.setAttribute("aria-label", localize("Roll") + " " + lore);
+        const roll = async event => {
+          if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (rollButton.dataset.rolling) return;
+          rollButton.dataset.rolling = "true";
+          try {
+            await rollPool(actor, lore);
+          } catch (error) {
+            ui.notifications.error(error.message);
+          } finally {
+            delete rollButton.dataset.rolling;
+          }
+        };
+        rollButton.addEventListener("click", roll);
+        rollButton.addEventListener("keydown", roll);
+      }
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = lore;
+      name.append(rollButton, label);
+
+      const ingredient = document.createElement("div");
+      ingredient.className = "flex";
+      const cn = document.createElement("div");
+      cn.className = "tiny";
+      const counter = document.createElement(actor.isOwner ? "a" : "span");
+      counter.className = "tiny prevent-context wfrp4pr-pool-counter";
+      counter.textContent = String(getPool(actor, lore).sl);
+      counter.setAttribute("aria-label", lore + " — SL");
+      if (actor.isOwner) {
+        counter.setAttribute("role", "button");
+        counter.tabIndex = 0;
+        const step = async event => {
+          if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          event.stopPropagation();
+          const delta = (event.type === "contextmenu" ? -1 : 1) * (event.ctrlKey ? 10 : 1);
+          try {
+            await stepPool(actor, lore, delta);
+            counter.textContent = String(getPool(actor, lore).sl);
+          } catch (error) {
+            ui.notifications.error(error.message);
+          }
+        };
+        counter.addEventListener("click", step);
+        counter.addEventListener("contextmenu", step);
+        counter.addEventListener("keydown", step);
+      }
+
+      const controls = document.createElement("div");
+      controls.className = "list-controls wfrp4pr-pool-controls";
+      if (actor.isOwner) {
+        const trigger = document.createElement("a");
+        trigger.className = "list-control wfrp4pr-pool-menu-trigger";
+        trigger.setAttribute("role", "button");
+        trigger.tabIndex = 0;
+        trigger.setAttribute("aria-label", localize("Menu"));
+        trigger.innerHTML = '<i class="fa-regular fa-ellipsis-vertical"></i>';
+        const menu = document.createElement("div");
+        menu.className = "controls-dropdown wfrp4pr-pool-menu";
+        menu.hidden = true;
+        const remove = document.createElement("a");
+        remove.className = "control";
+        remove.innerHTML = '<i class="fas fa-times"></i><span></span>';
+        remove.querySelector("span").textContent = localize("Remove");
+        menu.append(remove);
+        const toggleMenu = event => {
+          if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          event.stopPropagation();
+          for (const other of root.querySelectorAll(".wfrp4pr-pool-menu")) {
+            if (other !== menu) other.hidden = true;
+          }
+          menu.hidden = !menu.hidden;
+          if (!menu.hidden) {
+            setTimeout(() => document.addEventListener("click", () => { menu.hidden = true; }, { once: true }), 0);
+          }
+        };
+        trigger.addEventListener("click", toggleMenu);
+        trigger.addEventListener("keydown", toggleMenu);
+        remove.addEventListener("click", async event => {
+          event.preventDefault();
+          event.stopPropagation();
+          try {
+            await removePool(actor, lore);
+            row.remove();
+            if (!content.children.length) section.remove();
+          } catch (error) {
+            ui.notifications.error(error.message);
+          }
+        });
+        controls.append(trigger, menu);
+      }
+
+      line.append(name, ingredient, cn, counter, controls);
+      row.append(line);
+      content.append(row);
+    }
+    section.append(sectionHeader, content);
+    list.before(section);
   }
 
   Hooks.once('ready', () => {
     try {
       patchTests();
-      (game.modules.get(MODULE_ID).api ||= {}).channelPool = { get: getPool, set: setPool, step: stepPool, getLore };
+      (game.modules.get(MODULE_ID).api ||= {}).channelPool = { get: getPool, set: setPool, step: stepPool, remove: removePool, roll: rollPool, getLore };
       Hooks.on('renderApplicationV2', renderPool);
       Hooks.on('renderActorSheet', renderPool);
       Hooks.on('renderChatMessageHTML', (message, html) => {
