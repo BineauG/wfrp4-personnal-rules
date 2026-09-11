@@ -38,62 +38,51 @@
   align-items: center;
 }
 
-.wfrp4pr-channelling .wfrp4pr-lore-roll {
-  position: relative;
-  display: inline-grid;
+.wfrp4pr-channelling .wfrp4pr-lore-image {
   flex: 0 0 30px;
   width: 30px;
   height: 30px;
-  margin-right: 0.5rem;
-  place-items: center;
-}
-
-.wfrp4pr-channelling .wfrp4pr-lore-roll img {
-  grid-area: 1 / 1;
-  width: 30px;
-  height: 30px;
-  margin: 0;
+  margin: 0 0.5rem 0 0;
   object-fit: cover;
-}
-
-.wfrp4pr-channelling .wfrp4pr-lore-die {
-  grid-area: 1 / 1;
-  z-index: 1;
-  font-size: 1.25rem;
-  opacity: 0;
   pointer-events: none;
 }
 
-.wfrp4pr-channelling .wfrp4pr-lore-roll.rollable:hover img {
-  opacity: 0.25;
+.wfrp4pr-channelling .wfrp4pr-lore-test {
+  cursor: pointer;
 }
 
-.wfrp4pr-channelling .wfrp4pr-lore-roll.rollable:hover .wfrp4pr-lore-die {
-  opacity: 1;
+.wfrp4pr-channelling .wfrp4pr-lore-test:hover {
+  text-decoration: underline;
 }
 
-.wfrp4pr-channelling .wfrp4pr-pool-controls {
-  position: relative;
-  overflow: visible;
-}
-
-.wfrp4pr-channelling .wfrp4pr-pool-menu {
-  position: absolute;
-  z-index: 20;
-  top: 1.25rem;
-  right: 0;
-  min-width: 10rem;
+.wfrp4pr-pool-menu {
+  position: fixed;
+  z-index: 100000;
+  min-width: 11rem;
   padding: 0.25rem;
+  color: var(--color-text-primary, #241f1a);
+  background: var(--color-bg-option, #f1e6d0);
+  border: 1px solid var(--color-border-dark, #514637);
+  border-radius: 3px;
+  box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.35);
   white-space: nowrap;
 }
 
-.wfrp4pr-channelling .wfrp4pr-pool-menu[hidden] {
-  display: none !important;
-}
-
-.wfrp4pr-channelling .wfrp4pr-pool-menu .control {
+.wfrp4pr-pool-menu .wfrp4pr-pool-remove {
   display: flex;
   gap: 0.4rem;
   align-items: center;
-  padding: 0.25rem 0.4rem;
+  width: 100%;
+  padding: 0.3rem 0.45rem;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+
+.wfrp4pr-pool-menu .wfrp4pr-pool-remove:hover,
+.wfrp4pr-pool-menu .wfrp4pr-pool-remove:focus {
+  background: rgba(0, 0, 0, 0.1);
 }

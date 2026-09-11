@@ -305,7 +305,7 @@ test('pool steps match the sheet controls and never go below zero', async () => 
   assert.equal((await h.api.step(a, 'fire', -10)).sl, 0);
   assert.equal(h.api.get(a, 'fire').sl, 0);
 });
-test('the lore icon rolls the matching owned Channelling skill', async () => {
+test('the lore name rolls the matching owned Channelling skill', async () => {
   const h = harness(); const a = h.actor();
   const skill = h.skill(a, 'channel-ulgu', 'Channelling (Ulgu)');
   let setup;
@@ -318,7 +318,7 @@ test('the lore icon rolls the matching owned Channelling skill', async () => {
   assert.equal(await h.api.roll(a, 'shadow'), 'rolled');
   assert.equal(setup.selected, skill);
   assert.equal(setup.options.skipTargets, true);
-  assert.match(setup.options.title, /shadow$/);
+  assert.match(setup.options.title, /Shadow$/);
   assert.equal(rolls, 1);
 
   const withoutSkill = h.actor();

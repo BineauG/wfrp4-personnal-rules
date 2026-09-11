@@ -132,7 +132,7 @@
     if (!skill) throw new Error(localize("NoSkill"));
     const test = await actor.setupSkill(skill, {
       skipTargets: true,
-      title: `${game.i18n.localize("ChannellingTest")} - ${lore}`
+      title: game.i18n.localize("ChannellingTest") + " - " + lore.charAt(0).toUpperCase() + lore.slice(1)
     });
     return test?.roll();
   }
@@ -317,6 +317,7 @@
     if (!header) return;
 
     root.querySelector(".wfrp4pr-channelling")?.remove();
+    for (const menu of document.querySelectorAll(".wfrp4pr-pool-menu")) menu.remove();
     const rows = Array.from(list.querySelectorAll(":scope > .list-content > .list-row"));
     const lores = actorLores(actor);
     let allPooled = rows.length > 0;
@@ -371,40 +372,37 @@
 
       const name = document.createElement("div");
       name.className = "list-name wfrp4pr-lore-name";
-      const skill = getChannelSkill(actor, lore);
-      const rollButton = document.createElement(actor.isOwner && skill ? "a" : "span");
-      rollButton.className = "wfrp4pr-lore-roll" + (actor.isOwner && skill ? " rollable" : "");
+      const displayName = lore.charAt(0).toUpperCase() + lore.slice(1);
       const image = document.createElement("img");
+      image.className = "wfrp4pr-lore-image";
       image.src = "modules/wfrp4e-core/icons/spells/" + lore + ".png";
       image.alt = "";
-      const die = document.createElement("i");
-      die.className = "fas fa-dice wfrp4pr-lore-die";
-      rollButton.append(image, die);
+      const skill = getChannelSkill(actor, lore);
+      const label = document.createElement(actor.isOwner && skill ? "a" : "span");
+      label.className = "label" + (actor.isOwner && skill ? " wfrp4pr-lore-test" : "");
+      label.textContent = displayName;
       if (actor.isOwner && skill) {
-        rollButton.setAttribute("role", "button");
-        rollButton.tabIndex = 0;
-        rollButton.setAttribute("aria-label", localize("Roll") + " " + lore);
+        label.setAttribute("role", "button");
+        label.tabIndex = 0;
+        label.setAttribute("aria-label", localize("Roll") + " " + displayName);
         const roll = async event => {
           if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
           event.preventDefault();
           event.stopPropagation();
-          if (rollButton.dataset.rolling) return;
-          rollButton.dataset.rolling = "true";
+          if (label.dataset.rolling) return;
+          label.dataset.rolling = "true";
           try {
             await rollPool(actor, lore);
           } catch (error) {
             ui.notifications.error(error.message);
           } finally {
-            delete rollButton.dataset.rolling;
+            delete label.dataset.rolling;
           }
         };
-        rollButton.addEventListener("click", roll);
-        rollButton.addEventListener("keydown", roll);
+        label.addEventListener("click", roll);
+        label.addEventListener("keydown", roll);
       }
-      const label = document.createElement("span");
-      label.className = "label";
-      label.textContent = lore;
-      name.append(rollButton, label);
+      name.append(image, label);
 
       const ingredient = document.createElement("div");
       ingredient.className = "flex";
@@ -413,7 +411,7 @@
       const counter = document.createElement(actor.isOwner ? "a" : "span");
       counter.className = "tiny prevent-context wfrp4pr-pool-counter";
       counter.textContent = String(getPool(actor, lore).sl);
-      counter.setAttribute("aria-label", lore + " — SL");
+      counter.setAttribute("aria-label", displayName + " — SL");
       if (actor.isOwner) {
         counter.setAttribute("role", "button");
         counter.tabIndex = 0;
@@ -435,48 +433,64 @@
       }
 
       const controls = document.createElement("div");
-      controls.className = "list-controls wfrp4pr-pool-controls";
+      controls.className = "list-controls";
       if (actor.isOwner) {
         const trigger = document.createElement("a");
         trigger.className = "list-control wfrp4pr-pool-menu-trigger";
         trigger.setAttribute("role", "button");
+        trigger.setAttribute("aria-haspopup", "menu");
+        trigger.setAttribute("aria-expanded", "false");
         trigger.tabIndex = 0;
         trigger.setAttribute("aria-label", localize("Menu"));
         trigger.innerHTML = '<i class="fa-regular fa-ellipsis-vertical"></i>';
-        const menu = document.createElement("div");
-        menu.className = "controls-dropdown wfrp4pr-pool-menu";
-        menu.hidden = true;
-        const remove = document.createElement("a");
-        remove.className = "control";
-        remove.innerHTML = '<i class="fas fa-times"></i><span></span>';
-        remove.querySelector("span").textContent = localize("Remove");
-        menu.append(remove);
-        const toggleMenu = event => {
+        const openMenu = event => {
           if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
           event.preventDefault();
           event.stopPropagation();
-          for (const other of root.querySelectorAll(".wfrp4pr-pool-menu")) {
-            if (other !== menu) other.hidden = true;
-          }
-          menu.hidden = !menu.hidden;
-          if (!menu.hidden) {
-            setTimeout(() => document.addEventListener("click", () => { menu.hidden = true; }, { once: true }), 0);
-          }
+          for (const other of document.querySelectorAll(".wfrp4pr-pool-menu")) other.remove();
+
+          const menu = document.createElement("div");
+          menu.className = "wfrp4pr-pool-menu";
+          menu.setAttribute("role", "menu");
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.className = "wfrp4pr-pool-remove";
+          remove.setAttribute("role", "menuitem");
+          remove.innerHTML = '<i class="fas fa-times"></i><span></span>';
+          remove.querySelector("span").textContent = localize("Remove");
+          menu.append(remove);
+          document.body.append(menu);
+
+          const rect = trigger.getBoundingClientRect();
+          const left = Math.max(8, Math.min(rect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8));
+          const top = Math.max(8, Math.min(rect.bottom + 3, window.innerHeight - menu.offsetHeight - 8));
+          menu.style.left = left + "px";
+          menu.style.top = top + "px";
+          trigger.setAttribute("aria-expanded", "true");
+
+          const close = () => {
+            menu.remove();
+            trigger.setAttribute("aria-expanded", "false");
+          };
+          document.addEventListener("pointerdown", outside => {
+            if (!menu.contains(outside.target) && outside.target !== trigger) close();
+          }, { once: true });
+          remove.addEventListener("click", async removeEvent => {
+            removeEvent.preventDefault();
+            removeEvent.stopPropagation();
+            try {
+              await removePool(actor, lore);
+              close();
+              row.remove();
+              if (!content.children.length) section.remove();
+            } catch (error) {
+              ui.notifications.error(error.message);
+            }
+          });
         };
-        trigger.addEventListener("click", toggleMenu);
-        trigger.addEventListener("keydown", toggleMenu);
-        remove.addEventListener("click", async event => {
-          event.preventDefault();
-          event.stopPropagation();
-          try {
-            await removePool(actor, lore);
-            row.remove();
-            if (!content.children.length) section.remove();
-          } catch (error) {
-            ui.notifications.error(error.message);
-          }
-        });
-        controls.append(trigger, menu);
+        trigger.addEventListener("click", openMenu);
+        trigger.addEventListener("keydown", openMenu);
+        controls.append(trigger);
       }
 
       line.append(name, ingredient, cn, counter, controls);
