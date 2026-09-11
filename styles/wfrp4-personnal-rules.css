@@ -1,0 +1,28 @@
+.wfrp4pr-card h3 {
+  margin: 0 0 0.4rem;
+}
+
+.wfrp4pr-card table {
+  width: 100%;
+  margin: 0.35rem 0;
+  border-collapse: collapse;
+}
+
+.wfrp4pr-card th,
+.wfrp4pr-card td {
+  padding: 0.15rem 0.25rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.wfrp4pr-card .wfrp4pr-price {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.wfrp4pr-card .wfrp4pr-note {
+  margin-top: 0.35rem;
+  font-style: italic;
+}

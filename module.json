@@ -1,0 +1,69 @@
+{
+  "id": "wfrp4-personnal-rules",
+  "title": "wfrp4-personnal-rules",
+  "version": "1.0.0",
+  "description": "Personal WFRP4E rules for Item Piles merchants, availability, locked doors, and custom difficulties.",
+  "authors": [
+    {
+      "name": "Guillaume Bineau"
+    }
+  ],
+  "compatibility": {
+    "minimum": "13",
+    "verified": "13"
+  },
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "styles": [
+    "styles/wfrp4-personnal-rules.css"
+  ],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "languages/en.json"
+    },
+    {
+      "lang": "fr",
+      "name": "Francais",
+      "path": "languages/fr.json"
+    }
+  ],
+  "relationships": {
+    "systems": [
+      {
+        "id": "wfrp4e",
+        "type": "system",
+        "compatibility": {
+          "minimum": "9.4.0",
+          "verified": "9.4.0"
+        }
+      }
+    ],
+    "requires": [
+      {
+        "id": "item-piles",
+        "type": "module",
+        "compatibility": {
+          "minimum": "3.3.0",
+          "verified": "3.3.0"
+        }
+      },
+      {
+        "id": "item-piles-wfrp4e",
+        "type": "module",
+        "compatibility": {
+          "minimum": "1.0.1",
+          "verified": "1.0.1"
+        }
+      },
+      {
+        "id": "socketlib",
+        "type": "module",
+        "compatibility": {}
+      }
+    ]
+  },
+  "socket": true
+}
