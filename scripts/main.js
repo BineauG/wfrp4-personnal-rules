@@ -35,6 +35,7 @@ Hooks.once("ready", () => {
   applyTzeentchLorePatch();
 
   game.modules.get(MODULE_ID).api = {
+    ...game.modules.get(MODULE_ID).api,
     rollAvailability: (actor, options = {}) => rollAvailabilityForActor(resolveActor(actor), options),
     negotiateTrade: executeMerchantTradeAsGM,
     configureDoor: configureDoor

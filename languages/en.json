@@ -120,5 +120,10 @@
   "WFRP4PR.Error.RollResultMissing": "The WFRP4E roll result could not be read. Haggling was cancelled.",
   "WFRP4PR.Error.TradeFailed": "Haggling failed: {error}",
   "WFRP4PR.Error.InvalidMoney": "Trade cancelled: invalid currency amount (expected a non-negative integer in pennies).",
-  "WFRP4PR.Error.MissingDenomination": "Trade cancelled: {actor} lacks the coins needed to preserve a remainder of {remainder} penny/pennies. Add a money item worth 1 penny (quantity 0 is allowed), then retry."
+  "WFRP4PR.Error.MissingDenomination": "Trade cancelled: {actor} lacks the coins needed to preserve a remainder of {remainder} penny/pennies. Add a money item worth 1 penny (quantity 0 is allowed), then retry.",
+  "WFRP4PR.ChannelPool.Label": "Channelling pool",
+  "WFRP4PR.ChannelPool.InvalidSL": "SL must be a non-negative integer.",
+  "WFRP4PR.ChannelPool.NoPermission": "You cannot edit this pool.",
+  "WFRP4PR.ChannelPool.NoLore": "This actor has no spell from that lore.",
+  "WFRP4PR.ChannelPool.UnsupportedVersion": "The channelling pool cannot be enabled on this WFRP4E version."
 }

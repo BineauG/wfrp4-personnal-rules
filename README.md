@@ -99,3 +99,19 @@ node --test tests/money.test.cjs
 ```
 
 API de macros : `game.modules.get("wfrp4-personnal-rules").api` (`rollAvailability`, `negotiateTrade`, `configureDoor`).
+
+## Réserve de canalisation (1.1.0)
+
+Les DR de canalisation sont communs aux sorts d'un même Lore, stockés sur l'acteur et sans plafond lié à la CN d'un sort. On lance toujours la canalisation depuis un sort : le jet, la compétence, les critiques, les ingrédients et les erreurs d'incantation restent ceux du système.
+
+- Le cast utilise la réserve du Lore choisi. Il vide toute cette réserve, même en cas d'échec, sauf si l'option native de conservation après échec est activée.
+- Les seuils de réussite restent natifs : sans canalisation partielle, une réserve inférieure à la CN ne réduit pas celle-ci. Avec l'option native de canalisation partielle ou Winds of Magic, elle réduit la CN.
+- Chaque Lore possède sa propre réserve. Pour un sort à plusieurs Lores, le Lore choisi est utilisé (le premier si aucun n'est choisi). La petite magie et les rituels conservent leur fonctionnement natif.
+- La fiche affiche les réserves sous l'en-tête Lore, avec une barre colorée (un segment par DR) et un total modifiable par le propriétaire. Le total reste lisible même lorsque la barre est pleine. Les DR et les barres par sort sont retirés pour les sorts concernés.
+- Les DR existants sont repris à la première utilisation : somme des anciens compteurs indépendants, ou maximum lorsque Winds of Magic les partageait déjà. Les anciens compteurs sont ensuite remis à zéro, la réserve étant enregistrée sur l'acteur.
+- Les relances utilisent la réserve enregistrée au moment du premier jet. Modifier un ancien jet ne recrée pas une réserve déjà dépensée et ne vide pas une nouvelle réserve.
+
+Vérifications : `node --test tests/*.test.cjs`.
+Pour exécuter les tests de canalisation avec les méthodes du système installé, définir `WFRP4E_SYSTEM_SOURCE` vers son fichier `wfrp4e.js`, puis lancer `node --test tests/channeling-pool.test.cjs`. Aucun code du système n'est distribué avec ce module.
+
+API : `game.modules.get("wfrp4-personnal-rules").api.channelPool.get(actor, "fire")` pour lire la réserve, et `await game.modules.get("wfrp4-personnal-rules").api.channelPool.set(actor, "fire", 4)` pour la modifier.

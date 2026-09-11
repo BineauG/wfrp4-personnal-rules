@@ -120,5 +120,10 @@
   "WFRP4PR.Error.RollResultMissing": "Le resultat du jet WFRP4E n'a pas pu etre lu. La negociation est annulee.",
   "WFRP4PR.Error.TradeFailed": "La negociation a echoue : {error}",
   "WFRP4PR.Error.InvalidMoney": "Echange annule : montant de monnaie invalide (entier positif ou nul en pennies attendu).",
-  "WFRP4PR.Error.MissingDenomination": "Echange annule : les pieces de {actor} ne permettent pas de conserver un reste de {remainder} penny(s). Ajoutez un objet de monnaie de valeur 1 penny (quantite 0 autorisee), puis recommencez."
+  "WFRP4PR.Error.MissingDenomination": "Echange annule : les pieces de {actor} ne permettent pas de conserver un reste de {remainder} penny(s). Ajoutez un objet de monnaie de valeur 1 penny (quantite 0 autorisee), puis recommencez.",
+  "WFRP4PR.ChannelPool.Label": "Réserve de canalisation",
+  "WFRP4PR.ChannelPool.InvalidSL": "Les DR doivent être un entier positif ou nul.",
+  "WFRP4PR.ChannelPool.NoPermission": "Vous ne pouvez pas modifier cette réserve.",
+  "WFRP4PR.ChannelPool.NoLore": "Ce personnage ne possède aucun sort de ce domaine.",
+  "WFRP4PR.ChannelPool.UnsupportedVersion": "Le pool de canalisation ne peut pas être activé sur cette version de WFRP4E."
 }
