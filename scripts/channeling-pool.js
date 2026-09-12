@@ -7,6 +7,7 @@
   const pendingChannel = new WeakMap();
   const suppressNativeClear = new WeakSet();
   const criticalChannels = new WeakSet();
+  const poolMenuRoots = new WeakMap();
 
   const setting = key => game.settings.get("wfrp4e", key);
   const localize = key => game.i18n.localize(`WFRP4PR.ChannelPool.${key}`);
@@ -308,6 +309,33 @@
     };
   }
 
+  function registerPoolContextMenu(app) {
+    if (poolMenuRoots.get(app) === app.element) return;
+    if (typeof app._createContextMenu !== "function") throw new Error(localize("UnsupportedVersion"));
+    app._createContextMenu(() => [{
+      name: localize("Remove"),
+      icon: '<i class="fas fa-times"></i>',
+      condition: target => {
+        const actor = app.actor || (app.document?.documentName === "Actor" ? app.document : null);
+        return !!actor?.isOwner && !!target.closest(".wfrp4pr-channelling .list-row[data-lore]");
+      },
+      callback: async target => {
+        const actor = app.actor || (app.document?.documentName === "Actor" ? app.document : null);
+        const row = target.closest(".wfrp4pr-channelling .list-row[data-lore]");
+        if (!actor || !row) return;
+        try {
+          await removePool(actor, row.dataset.lore);
+          const content = row.parentElement;
+          row.remove();
+          if (!content?.querySelector(":scope > .list-row")) content?.closest(".wfrp4pr-channelling")?.remove();
+        } catch (error) {
+          ui.notifications.error(error.message);
+        }
+      }
+    }], ".wfrp4pr-pool-menu-trigger", { eventName: "click", jQuery: false, fixed: true });
+    poolMenuRoots.set(app, app.element);
+  }
+
   function renderPool(app, html) {
     const actor = app.actor || (app.document?.documentName === "Actor" ? app.document : null);
     const root = html?.querySelectorAll ? html : html?.[0];
@@ -317,7 +345,6 @@
     if (!header) return;
 
     root.querySelector(".wfrp4pr-channelling")?.remove();
-    for (const menu of document.querySelectorAll(".wfrp4pr-pool-menu")) menu.remove();
     const rows = Array.from(list.querySelectorAll(":scope > .list-content > .list-row"));
     const lores = actorLores(actor);
     let allPooled = rows.length > 0;
@@ -361,11 +388,13 @@
     controlsSpacer.className = "list-controls";
     sectionHeader.append(title, ingredientSpacer, cnSpacer, slTitle, controlsSpacer);
 
+    if (actor.isOwner) registerPoolContextMenu(app);
+
     const content = document.createElement("div");
     content.className = "list-content";
     for (const lore of lores) {
       const row = document.createElement("div");
-      row.className = "list-row";
+      row.className = "list-row nocontext";
       row.dataset.lore = lore;
       const line = document.createElement("div");
       line.className = "row-content";
@@ -437,59 +466,8 @@
       if (actor.isOwner) {
         const trigger = document.createElement("a");
         trigger.className = "list-control wfrp4pr-pool-menu-trigger";
-        trigger.setAttribute("role", "button");
-        trigger.setAttribute("aria-haspopup", "menu");
-        trigger.setAttribute("aria-expanded", "false");
-        trigger.tabIndex = 0;
         trigger.setAttribute("aria-label", localize("Menu"));
         trigger.innerHTML = '<i class="fa-regular fa-ellipsis-vertical"></i>';
-        const openMenu = event => {
-          if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
-          event.preventDefault();
-          event.stopPropagation();
-          for (const other of document.querySelectorAll(".wfrp4pr-pool-menu")) other.remove();
-
-          const menu = document.createElement("div");
-          menu.className = "wfrp4pr-pool-menu";
-          menu.setAttribute("role", "menu");
-          const remove = document.createElement("button");
-          remove.type = "button";
-          remove.className = "wfrp4pr-pool-remove";
-          remove.setAttribute("role", "menuitem");
-          remove.innerHTML = '<i class="fas fa-times"></i><span></span>';
-          remove.querySelector("span").textContent = localize("Remove");
-          menu.append(remove);
-          document.body.append(menu);
-
-          const rect = trigger.getBoundingClientRect();
-          const left = Math.max(8, Math.min(rect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8));
-          const top = Math.max(8, Math.min(rect.bottom + 3, window.innerHeight - menu.offsetHeight - 8));
-          menu.style.left = left + "px";
-          menu.style.top = top + "px";
-          trigger.setAttribute("aria-expanded", "true");
-
-          const close = () => {
-            menu.remove();
-            trigger.setAttribute("aria-expanded", "false");
-          };
-          document.addEventListener("pointerdown", outside => {
-            if (!menu.contains(outside.target) && outside.target !== trigger) close();
-          }, { once: true });
-          remove.addEventListener("click", async removeEvent => {
-            removeEvent.preventDefault();
-            removeEvent.stopPropagation();
-            try {
-              await removePool(actor, lore);
-              close();
-              row.remove();
-              if (!content.children.length) section.remove();
-            } catch (error) {
-              ui.notifications.error(error.message);
-            }
-          });
-        };
-        trigger.addEventListener("click", openMenu);
-        trigger.addEventListener("keydown", openMenu);
         controls.append(trigger);
       }
 

@@ -29,10 +29,6 @@
 
 .wfrp4pr-pool-hidden { display: none !important; }
 
-.wfrp4pr-channelling .wfrp4pr-pool-counter {
-  cursor: pointer;
-}
-
 .wfrp4pr-channelling .wfrp4pr-lore-name {
   display: flex;
   align-items: center;
@@ -47,42 +43,10 @@
   pointer-events: none;
 }
 
-.wfrp4pr-channelling .wfrp4pr-lore-test {
-  cursor: pointer;
-}
-
 .wfrp4pr-channelling .wfrp4pr-lore-test:hover {
-  text-decoration: underline;
+  text-decoration: none;
 }
 
-.wfrp4pr-pool-menu {
-  position: fixed;
-  z-index: 100000;
-  min-width: 11rem;
-  padding: 0.25rem;
-  color: var(--color-text-primary, #241f1a);
-  background: var(--color-bg-option, #f1e6d0);
-  border: 1px solid var(--color-border-dark, #514637);
-  border-radius: 3px;
-  box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.35);
-  white-space: nowrap;
-}
-
-.wfrp4pr-pool-menu .wfrp4pr-pool-remove {
-  display: flex;
-  gap: 0.4rem;
-  align-items: center;
-  width: 100%;
-  padding: 0.3rem 0.45rem;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  background: transparent;
-  border: 0;
-}
-
-.wfrp4pr-pool-menu .wfrp4pr-pool-remove:hover,
-.wfrp4pr-pool-menu .wfrp4pr-pool-remove:focus {
-  background: rgba(0, 0, 0, 0.1);
+.wfrp4pr-channelling .wfrp4pr-pool-counter {
+  cursor: inherit;
 }
