@@ -138,12 +138,69 @@
     return test?.roll();
   }
 
-  function patchSkillTests(SkillTest) {
+  function isChannelSkillTest(test) {
+    return channelSkillWind(test.item) !== null && !test.context.unopposed && !test.context.dispel;
+  }
+
+  // Supply only the spell fields required by native channelling computation.
+  // The skill document, target calculation and persisted test remain unchanged.
+  function channelSkillView(test, ChannelTest) {
+    const skill = test.item;
+    const lore = getSkillLore(test.actor, skill);
+    const flags = {};
+    const item = new Proxy(skill, {
+      get(target, key) {
+        if (key === "lore") return { value: lore };
+        if (key === "cn") return { value: 0 };
+        if (key === "flags") return flags;
+        const value = Reflect.get(target, key, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    });
+    return new Proxy(test, {
+      get(target, key) {
+        if (key === "item" || key === "spell") return item;
+        if (key === "hasIngredient") return false;
+        if (key === "_checkInfluences") return ChannelTest.prototype._checkInfluences.bind(target);
+        const value = Reflect.get(target, key, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    });
+  }
+
+  function patchSkillTests(SkillTest, ChannelTest) {
+    const nativeCompute = SkillTest.prototype.computeResult;
+    SkillTest.prototype.computeResult = async function(...args) {
+      if (!isChannelSkillTest(this)) return nativeCompute.apply(this, args);
+      this.preData.unofficialGrimoire ??= setting("homebrew").unofficialgrimoire;
+      return ChannelTest.prototype.computeResult.apply(channelSkillView(this, ChannelTest), args);
+    };
+
+    const nativeTables = SkillTest.prototype.computeTables;
+    SkillTest.prototype.computeTables = function(...args) {
+      if (!isChannelSkillTest(this)) return nativeTables.apply(this, args);
+      return ChannelTest.prototype.computeTables.apply(this, args);
+    };
+
+    // Aethyric Attunement and other effects use the channelling-specific triggers.
+    for (const [method, trigger] of [["runPreEffects", "preChannellingTest"], ["runPostEffects", "rollChannellingTest"]]) {
+      const native = SkillTest.prototype[method];
+      SkillTest.prototype[method] = async function(...args) {
+        const result = await native.apply(this, args);
+        if (!isChannelSkillTest(this)) return result;
+        const scriptArgs = { test: this, chatOptions: this.context.chatOptions };
+        await Promise.all(this.actor.runScripts(trigger, scriptArgs));
+        await Promise.all(this.item.runScripts(trigger, scriptArgs));
+        if (method === "runPostEffects") Hooks.call("wfrp4e:rollChannelTest", this, this.context.chatOptions);
+        return result;
+      };
+    }
+
     const nativePost = SkillTest.prototype.postTest;
     SkillTest.prototype.postTest = async function(...args) {
       const result = await nativePost.apply(this, args);
       const skill = this.item;
-      if (!this.actor?.isOwner || channelSkillWind(skill) === null || this.context.unopposed) return result;
+      if (!this.actor?.isOwner || !isChannelSkillTest(this)) return result;
       const previous = this.context[SKILL_CONTEXT_KEY];
       const lore = previous?.lore || getSkillLore(this.actor, skill);
       if (!lore) { if (this.succeeded) ui.notifications.warn(localize("UnknownWind")); return result; }
@@ -210,7 +267,7 @@
     if (!nativeItem || !ChannelTest.prototype.updateChannelledItems || !CastTest.prototype.postTest || !SkillTest?.prototype.postTest) {
       throw new Error(localize("UnsupportedVersion"));
     }
-    patchSkillTests(SkillTest);
+    patchSkillTests(SkillTest, ChannelTest);
     for (const TestClass of [ChannelTest, CastTest]) {
       Object.defineProperty(TestClass.prototype, "item", {
         configurable: true,

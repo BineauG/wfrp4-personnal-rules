@@ -119,3 +119,7 @@ API : `game.modules.get("wfrp4-personnal-rules").api.channelPool.get(actor, "fir
 ### Compétence Channelling (1.1.1)
 
 Un test de compétence spécialisé réussi, par exemple `Channelling (Ulgu)`, ajoute ses DR positifs au pool du Lore correspondant (ici Ombres). Un échec ou une réussite à 0 DR n’ajoute rien. Le test reste un jet de compétence normal. La réserve fonctionne même avant l’acquisition d’un sort de ce Lore. Une relance corrige la contribution précédente ; elle ne recrée pas des DR déjà dépensés. Un vent ambigu (par exemple Dhar avec plusieurs Lores connus) n’est pas attribué arbitrairement et déclenche un avertissement.
+
+### Erreurs de canalisation (1.1.5)
+
+Les jets lancés depuis la compétence Channelling ou le nom du Lore utilisent le calcul natif des erreurs de canalisation et leurs liens de tables dans le chat. Les effets de canalisation, dont Aethyric Attunement, sont exécutés aux mêmes étapes que pour un sort. Les options du système, notamment Winds of Magic, restent prises en compte. Les tests de dissipation conservent leur fonctionnement propre.

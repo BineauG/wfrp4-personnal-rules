@@ -43,6 +43,8 @@ function harness(options = {}) {
       get failed() { return !this.succeeded; }
       get hasIngredient() { return !!this.useIngredient; }
       async runPreEffects() {}
+    async runPostEffects() {}
+    computeTables() {}
       async computeResult() {}
       _handleMiscasts(count) { this.result.miscastCount = count; }
     }
@@ -51,6 +53,8 @@ function harness(options = {}) {
   if (nativeSource) {
     const extract = (start, end) => nativeSource.slice(nativeSource.indexOf(start), nativeSource.indexOf(end));
     vm.runInContext(extract('class ChannelTest extends', 'class ChannellingDialog extends'), context);
+    // Exercise the real miscast severity handler as well as ChannelTest rules.
+    vm.runInContext('class NativeMiscasts { ' + extract('  _handleMiscasts(miscastCounter) {', '  formatBreakdown()') + ' }; TestWFRP.prototype._handleMiscasts = NativeMiscasts.prototype._handleMiscasts;', context);
     vm.runInContext(extract('class CastTest extends', 'class WomCastTest extends'), context);
   } else {
     // Small contract doubles keep the ordinary suite runnable without an installed system.
@@ -133,12 +137,12 @@ function harness(options = {}) {
   }
   function skill(owner, id, name) {
     const match = /^(.*?)\s*\(([^()]*)\)\s*$/.exec(name);
-    const item = { id, uuid: owner.uuid + '.Item.' + id, type: 'skill', name, specifier: match?.[2] || '', parent: owner, toObject() { return { _id: id, type: 'skill', name, system: {} }; } };
+    const item = { id, uuid: owner.uuid + '.Item.' + id, type: 'skill', name, runScripts: () => [], specifier: match?.[2] || '', parent: owner, toObject() { return { _id: id, type: 'skill', name, system: {} }; } };
     owner.items.push(item);
     return item;
   }
   function roll(kind, owner, item, sl = 2, success = true) {
-    const result = { SL: String(sl), outcome: success ? 'success' : 'failure', roll: success ? 32 : 67, other: [], tooltips: {}, overcast: { enabled: false }, breakdown: { damage: { other: [] } } };
+    const result = { tables: {}, SL: String(sl), outcome: success ? 'success' : 'failure', roll: success ? 32 : 67, other: [], tooltips: {}, overcast: { enabled: false }, breakdown: { damage: { other: [] } } };
     const instance = Object.create(context.game.wfrp4e.rolls[kind].prototype);
     instance.actor = owner;
     instance.data = { preData: { item: item.id, itemData: item.toObject(), ingredientMode: 'none' }, context: {}, result };
@@ -375,4 +379,90 @@ test('a Channelling skill creates a visible pool without a spell and ambiguous D
   assert.equal(h.warnings.length, 1);
   assert.equal(h.api.get(a, 'daemonology').sl, 0);
   assert.equal(h.api.get(a, 'necromancy').sl, 0);
+});
+
+
+// These cases use installed WFRP4E methods; no copies of system rules ship here.
+test('skill channelling uses native miscast severity and chat tables', { skip: !nativeSource }, async () => {
+  for (const [dice, success, expected] of [
+    [77, false, 'majormis'], [80, false, 'majormis'], [100, false, 'majormis'],
+    [22, true, 'minormis'], [78, false, undefined], [20, true, undefined]
+  ]) {
+    const h = harness(); const a = h.actor();
+    const skill = h.skill(a, 'ulgu', 'Channelling (Ulgu)');
+    const spell = h.spell(a, 'shadow', 'shadow');
+    const viaSkill = h.roll('SkillTest', a, skill, success ? 3 : -3, success);
+    const viaSpell = h.roll('ChannelTest', a, spell, success ? 3 : -3, success);
+    for (const roll of [viaSkill, viaSpell]) {
+      roll.result.roll = dice;
+      await roll.computeResult();
+      roll.computeTables();
+      assert.equal(roll.result.tables.miscast?.key, expected, 'roll ' + dice);
+    }
+    assert.deepEqual(JSON.parse(JSON.stringify(viaSkill.result.tables)), JSON.parse(JSON.stringify(viaSpell.result.tables)));
+    await viaSkill.postTest();
+    assert.equal(h.api.get(a, 'shadow').sl, success ? 3 : 0);
+    assert.equal(skill.flags, undefined, 'critical flags never mutate the skill document');
+  }
+});
+
+test('native Aethyric Attunement effect applies to skill and pool lore rolls', { skip: !nativeSource }, async () => {
+  const line = nativeSource.split('\n').find(line => line.includes('mergeObject(game.wfrp4e.config.effectScripts'));
+  const scripts = JSON.parse(line.slice(line.indexOf('{'), line.lastIndexOf('}') + 1));
+  const talentScript = scripts.vzMxIDjRlQSxXtCW;
+  assert.ok(talentScript, 'installed Aethyric Attunement script is available');
+  for (const [dice, success, expected] of [[22, true, undefined], [77, false, 'majormis']]) {
+    const h = harness(); const a = h.actor();
+    const skill = h.skill(a, 'ulgu', 'Channelling (Ulgu)');
+    const calls = [];
+    const talent = vm.runInContext('(args) => { ' + talentScript + ' }', h.context);
+    a.runScripts = (trigger, args) => { calls.push(trigger); return trigger === 'rollChannellingTest' ? [talent(args)] : []; };
+    a.setupSkill = async selected => {
+      const roll = h.roll('SkillTest', a, selected, 3, success);
+      roll.result.roll = dice;
+      roll.roll = async () => {
+        await roll.runPreEffects();
+        await roll.computeResult();
+        roll.computeTables();
+        await roll.runPostEffects();
+        await roll.postTest();
+        return roll;
+      };
+      return roll;
+    };
+    const result = await h.api.roll(a, 'shadow');
+    assert.equal(result.result.tables.miscast?.key, expected);
+    assert.deepEqual(calls, ['preChannellingTest', 'rollChannellingTest']);
+  }
+});
+
+test('native Winds of Magic miscasts and reroll recalculation work for skills', { skip: !nativeSource }, async () => {
+  const h = harness({ useWoMChannelling: true }); const a = h.actor();
+  const skill = h.skill(a, 'ulgu', 'Channelling (Ulgu)');
+  const roll = h.roll('SkillTest', a, skill, -3, false);
+  roll.result.roll = 77;
+  await roll.computeResult(); roll.computeTables();
+  assert.equal(roll.result.tables.miscast.key, 'minormis');
+  // Foundry resets result data before recomputing an edited/rerolled test.
+  roll.context.reroll = true;
+  roll.data.result = { ...h.roll('SkillTest', a, skill, -3, false).result, roll: 80 };
+  await roll.computeResult(); roll.computeTables();
+  assert.equal(roll.result.tables.miscast, undefined);
+});
+
+test('other skills and dispel tests retain their normal computation and effects', { skip: !nativeSource }, async () => {
+  const h = harness(); const a = h.actor();
+  const calls = [];
+  a.runScripts = (trigger) => { calls.push(trigger); return []; };
+  const ordinary = h.roll('SkillTest', a, h.skill(a, 'cool', 'Cool'), -3, false);
+  const dispel = h.roll('SkillTest', a, h.skill(a, 'ulgu', 'Channelling (Ulgu)'), -3, false);
+  dispel.context.dispel = 'message-id';
+  for (const roll of [ordinary, dispel]) {
+    roll.result.roll = 77;
+    await roll.runPreEffects(); await roll.computeResult(); roll.computeTables();
+    await roll.runPostEffects(); await roll.postTest();
+    assert.equal(roll.result.tables.miscast, undefined);
+  }
+  assert.deepEqual(calls, []);
+  assert.equal(h.api.get(a, 'shadow').sl, 0);
 });
