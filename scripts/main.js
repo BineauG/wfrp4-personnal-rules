@@ -74,7 +74,7 @@ function registerSettings() {
     name: "WFRP4PR.Settings.Settlement.Name",
     hint: "WFRP4PR.Settings.Settlement.Hint",
     scope: "world",
-    config: true,
+    config: false,
     type: String,
     default: "MARKET.Town",
     choices: {
@@ -88,7 +88,7 @@ function registerSettings() {
     name: "WFRP4PR.Settings.AvailabilityModifier.Name",
     hint: "WFRP4PR.Settings.AvailabilityModifier.Hint",
     scope: "world",
-    config: true,
+    config: false,
     type: Number,
     default: 0
   });
@@ -100,15 +100,6 @@ function registerSettings() {
     config: true,
     type: Boolean,
     default: false
-  });
-
-  game.settings.register(MODULE_ID, "chatAvailability", {
-    name: "WFRP4PR.Settings.ChatAvailability.Name",
-    hint: "WFRP4PR.Settings.ChatAvailability.Hint",
-    scope: "world",
-    config: true,
-    type: Boolean,
-    default: true
   });
 
   game.settings.register(MODULE_ID, "enableDoorActions", {
@@ -335,6 +326,12 @@ function patchItemPilesTrade() {
 
     try {
       const normalizedItems = normalizeTradeItems(sellerActor, items);
+      // Keep specialised Item Piles workflows native instead of approximating
+      // their prices, service macros, activity logs or alternate currencies.
+      if (requiresNativeTrade(sellerActor, buyerActor, normalizedItems)) {
+        ui.notifications.info(game.i18n.localize("WFRP4PR.Chat.NativeTrade"));
+        return originalTradeItems(seller, buyer, items, options);
+      }
       const results = [];
       const isPurchase = sellerIsMerchant;
 
@@ -349,7 +346,14 @@ function patchItemPilesTrade() {
 
         if (!playerSkill) return false;
         if (playerSkill === "none") {
-          return originalTradeItems(seller, buyer, items, options);
+          const result = await originalTradeItems(seller, buyer, [{
+            item: itemData.itemId,
+            quantity: itemData.quantity,
+            paymentIndex: itemData.paymentIndex
+          }], options);
+          if (!result) return false;
+          results.push(result);
+          continue;
         }
 
         const playerTest = await rollSkillWithDialog(playerActor, playerSkill, {
@@ -370,7 +374,7 @@ function patchItemPilesTrade() {
         };
 
         const result = game.user.isGM
-          ? await executeMerchantTradeAsGM(payload)
+          ? await queueMerchantTradeAsGM(payload)
           : await socket.executeAsGM(SOCKET_TRADE, payload);
 
         if (!result) return false;
@@ -386,75 +390,131 @@ function patchItemPilesTrade() {
   };
 }
 
+// Observe only open Item Piles windows: Svelte switches tabs without a Foundry render.
+const merchantConfigObservers = new Map();
+
 function registerMerchantConfigHooks() {
-  Hooks.on("renderItemPileConfig", injectMerchantSettlementConfig);
-
-  const ItemPileConfig = game.itempiles?.apps?.ItemPileConfig;
-  if (!ItemPileConfig || ItemPileConfig.prototype._wfrp4prSettlementPatch) return;
-
-  const originalRender = ItemPileConfig.prototype.render;
-  ItemPileConfig.prototype.render = function wfrp4prRenderItemPileConfig(...args) {
-    const result = originalRender.apply(this, args);
-    setTimeout(() => injectMerchantSettlementConfig(this, this.element || this._element), 25);
-    return result;
+  const attach = (app, html) => {
+    const config = app?.id?.startsWith("item-pile-config-");
+    const merchant = app?.id?.startsWith("item-pile-merchant-");
+    if (!game.user.isGM || (!config && !merchant)) return;
+    const actor = config ? getItemPileConfigActor(app) : app.merchant;
+    const root = getHtmlElement(html) || getHtmlElement(app.element);
+    if (!actor || !root?.querySelectorAll) return;
+    merchantConfigObservers.get(app)?.observer.disconnect();
+    const refresh = () => injectMerchantSettings(root, actor, { config });
+    const observer = new MutationObserver(refresh);
+    merchantConfigObservers.set(app, { observer, refresh, actor });
+    refresh();
+    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
   };
-  ItemPileConfig.prototype._wfrp4prSettlementPatch = true;
+  Hooks.on("renderApplication", attach);
+  Hooks.on("renderItemPileConfig", attach);
+  Hooks.on("renderMerchantApp", attach);
+  Hooks.on("closeApplication", app => {
+    merchantConfigObservers.get(app)?.observer.disconnect();
+    merchantConfigObservers.delete(app);
+  });
+  Hooks.on("updateActor", actor => {
+    for (const entry of merchantConfigObservers.values()) {
+      if (entry.actor.uuid === actor.uuid) entry.refresh();
+    }
+  });
 }
 
-function injectMerchantSettlementConfig(app, html) {
-  setTimeout(() => {
-    const actor = getItemPileConfigActor(app);
-    if (!actor) return;
+function requiresNativeTrade(seller, buyer, items) {
+  const merchant = isItemPilesMerchant(seller) ? seller : buyer;
+  const pile = getPileData(merchant);
+  if (pile.macro || pile.logMerchantActivity || pile.overheadCost?.length
+    || pile.overrideCurrencies || pile.overrideSecondaryCurrencies
+    || getPileData(buyer).type === "vault") return true;
+  return items.some(data => {
+    const item = seller.items.get(data.itemId);
+    const flags = getItemPileData(item);
+    return data.paymentIndex !== 0 || flags.isService || flags.macro
+      || flags.keepOnMerchant || flags.disableNormalCost || flags.overheadCost?.length
+      || flags.prices?.some(group => group.length)
+      || flags.sellPrices?.some(group => group.length);
+  });
+}
 
-    const root = getHtmlElement(html) || app.element || app._element;
-    if (!root || root.querySelector(".wfrp4pr-negotiation-config, .wfrp4pr-settlement-config")) return;
+function getMerchantSettingsContainer(root, { config }) {
+  if (!config) return root.querySelector(".merchant-settings .setting-container");
+  // MerchantImage belongs exclusively to Other Settings. Never fall back to
+  // the first form-group (that inserted our fields into Main Settings).
+  const label = game.i18n.localize("ITEM-PILES.Applications.ItemPileConfig.Merchant.MerchantImage");
+  const anchor = Array.from(root.querySelectorAll(".form-group")).find(group =>
+    Array.from(group.querySelectorAll("label span")).some(span => span.textContent.trim() === label));
+  const active = root.querySelector("[data-tab].active");
+  const other = game.i18n.localize("ITEM-PILES.Applications.ItemPileConfig.Other.Title");
+  if (active && active.textContent.trim() !== other) return null;
+  return anchor?.parentElement || null;
+}
 
-    const merchantSettings = Array.from(root.querySelectorAll(".form-group")).find(group => {
-      return group.textContent?.includes(game.i18n.localize("ITEM-PILES.Applications.ItemPileConfig.Merchant.MerchantImage"));
-    }) || root.querySelector("form.item-piles-config-container .form-group");
+function injectMerchantSettings(root, actor, { config }) {
+  const container = getMerchantSettingsContainer(root, { config });
+  let block = root.querySelector(".wfrp4pr-merchant-settings");
+  if (!container) {
+    block?.remove();
+    return;
+  }
+  if (block && block.parentElement !== container) {
+    block.remove();
+    block = null;
+  }
+  if (!block) {
+    block = document.createElement("div");
+    block.className = "wfrp4pr-merchant-settings";
+    if (config) {
+      const row = document.createElement("label");
+      row.className = "wfrp4pr-merchant-toggle";
+      const title = document.createElement("span");
+      title.textContent = game.i18n.localize("WFRP4PR.MerchantConfig.NegotiationEnabled");
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.dataset.wfrp4prSetting = "negotiationDisabled";
+      input.addEventListener("change", () => saveMerchantControl(actor, input, "negotiationDisabled", !input.checked));
+      row.append(title, input);
+      block.append(row);
+    }
+    const label = document.createElement("label");
+    label.className = "wfrp4pr-merchant-settlement";
+    const title = document.createElement("span");
+    title.textContent = game.i18n.localize("WFRP4PR.MerchantConfig.Settlement");
+    const select = document.createElement("select");
+    select.dataset.wfrp4prSetting = "settlement";
+    for (const [value, key] of settlementOptions()) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = game.i18n.localize(key);
+      select.append(option);
+    }
+    select.addEventListener("change", () => saveMerchantControl(actor, select, "settlement", select.value));
+    label.append(title, select);
+    const hint = document.createElement("p");
+    hint.className = "notes";
+    hint.textContent = game.i18n.localize("WFRP4PR.MerchantConfig.SettlementHint");
+    block.append(label, hint);
+    container.append(block);
+  }
+  const toggle = block.querySelector("input");
+  const select = block.querySelector("select");
+  if (toggle && !toggle.disabled) toggle.checked = isActorNegotiationEnabled(actor);
+  if (!select.disabled) select.value = getMerchantSettlement(actor);
+}
 
-    if (!merchantSettings) return;
-
-    const negotiationField = document.createElement("div");
-    negotiationField.className = "form-group wfrp4pr-negotiation-config";
-    negotiationField.innerHTML = `
-      <label>
-        <span>${game.i18n.localize("WFRP4PR.MerchantConfig.NegotiationEnabled")}</span>
-        <p>${game.i18n.localize("WFRP4PR.MerchantConfig.NegotiationEnabledHint")}</p>
-      </label>
-      <input type="checkbox" style="flex:4;">
-    `;
-
-    const negotiationInput = negotiationField.querySelector("input");
-    negotiationInput.checked = isActorNegotiationEnabled(actor);
-    negotiationInput.addEventListener("change", async event => {
-      await actor.setFlag(MODULE_ID, "negotiationDisabled", !event.currentTarget.checked);
-      ui.notifications.info(game.i18n.localize("WFRP4PR.MerchantConfig.NegotiationSaved"));
-    });
-
-    const settlementField = document.createElement("div");
-    settlementField.className = "form-group wfrp4pr-settlement-config";
-    settlementField.innerHTML = `
-      <label>
-        <span>${game.i18n.localize("WFRP4PR.MerchantConfig.Settlement")}</span>
-        <p>${game.i18n.localize("WFRP4PR.MerchantConfig.SettlementHint")}</p>
-      </label>
-      <select style="flex:4;">
-        ${settlementOptions().map(([value, label]) => {
-          return `<option value="${value}">${game.i18n.localize(label)}</option>`;
-        }).join("")}
-      </select>
-    `;
-
-    const select = settlementField.querySelector("select");
-    select.value = getMerchantSettlement(actor);
-    select.addEventListener("change", async event => {
-      await actor.setFlag(MODULE_ID, "settlement", event.currentTarget.value);
-      ui.notifications.info(game.i18n.localize("WFRP4PR.MerchantConfig.SettlementSaved"));
-    });
-
-    merchantSettings.after(negotiationField, settlementField);
-  }, 0);
+async function saveMerchantControl(actor, control, key, value) {
+  control.disabled = true;
+  try {
+    await actor.setFlag(MODULE_ID, key, value);
+  } catch (error) {
+    console.error(`${MODULE_ID} | Merchant setting failed`, error);
+    ui.notifications.error(error.message || String(error));
+  } finally {
+    control.disabled = false;
+    if (key === "settlement") control.value = getMerchantSettlement(actor);
+    else control.checked = isActorNegotiationEnabled(actor);
+  }
 }
 
 function getItemPileConfigActor(app) {
@@ -472,18 +532,18 @@ function getHtmlElement(html) {
 }
 
 function registerAvailabilityHooks() {
-  Hooks.on("createActor", actor => {
-    if (!game.user.isGM || !shouldAutoRollAvailability(actor)) return;
+  Hooks.on("createActor", (actor, options, userId) => {
+    if (!isAvailabilityAuthority(userId) || !shouldAutoRollAvailability(actor)) return;
     scheduleAvailabilityRoll(actor, { force: true });
   });
 
-  Hooks.on("updateActor", (actor, changes, options) => {
-    if (!game.user.isGM || options?.[MODULE_ID]?.availability) return;
-    if (!shouldAutoRollAvailability(actor)) return;
+  Hooks.on("updateActor", (actor, changes, options, userId) => {
+    if (!isAvailabilityAuthority(userId) || options?.[MODULE_ID]?.availability) return;
     if (foundry.utils.hasProperty(changes, MODULE_SETTLEMENT)) {
-      scheduleAvailabilityRoll(actor, { force: true });
+      if (isItemPilesMerchant(actor)) scheduleAvailabilityRoll(actor, { force: true });
       return;
     }
+    if (!shouldAutoRollAvailability(actor)) return;
     if (foundry.utils.getProperty(changes, `flags.${MODULE_ID}`)) return;
 
     const pileChange = foundry.utils.getProperty(changes, ITEM_PILE_DATA);
@@ -494,12 +554,19 @@ function registerAvailabilityHooks() {
     }
   });
 
-  Hooks.on("createItem", item => {
-    if (!game.user.isGM) return;
+  Hooks.on("createItem", (item, options, userId) => {
+    if (!isAvailabilityAuthority(userId)) return;
     const actor = item.parent;
     if (!shouldAutoRollAvailability(actor)) return;
     scheduleAvailabilityRoll(actor, { force: false });
   });
+}
+
+function isAvailabilityAuthority(userId) {
+  if (!game.user.isGM) return false;
+  const initiator = game.users.get(userId);
+  const gm = initiator?.isGM && initiator.active ? initiator : game.users.activeGM;
+  return gm?.id === game.user.id;
 }
 
 function shouldAutoRollAvailability(actor) {
@@ -513,11 +580,11 @@ function scheduleAvailabilityRoll(actor, { force = false } = {}) {
   const key = actor.uuid || actor.id;
   if (!key) return;
 
-  if (pendingAvailability.has(key)) {
-    clearTimeout(pendingAvailability.get(key));
-  }
+  const previous = pendingAvailability.get(key);
+  if (previous) clearTimeout(previous.timer);
+  force ||= previous?.force || false;
 
-  pendingAvailability.set(key, setTimeout(async () => {
+  const timer = setTimeout(async () => {
     pendingAvailability.delete(key);
     try {
       await rollAvailabilityForActor(actor, { force });
@@ -525,7 +592,8 @@ function scheduleAvailabilityRoll(actor, { force = false } = {}) {
       console.error(`${MODULE_ID} | Availability failed`, error);
       ui.notifications.error(error.message || String(error));
     }
-  }, 500));
+  }, 500);
+  pendingAvailability.set(key, { timer, force });
 }
 
 function registerDoorHooks() {
@@ -1150,7 +1218,9 @@ function queueMerchantTradeAsGM(payload) {
     .catch(error => console.error(`${MODULE_ID} | Previous queued trade failed`, error))
     .then(async () => {
       try {
-        return await executeMerchantTradeAsGM(payload);
+        const result = await executeMerchantTradeAsGM(payload);
+        if (!result) await whisperTradeError(payload, new Error(game.i18n.localize("WFRP4PR.Error.TradeCancelled")));
+        return result;
       } catch (error) {
         console.error(`${MODULE_ID} | Queued trade failed`, error);
         ui.notifications.error(error.message || String(error));
@@ -1159,7 +1229,7 @@ function queueMerchantTradeAsGM(payload) {
       }
     });
 
-  return { ok: true, pending: true };
+  return gmTradeQueue;
 }
 
 async function whisperTradeError(payload, error) {
@@ -1770,10 +1840,6 @@ async function rollAvailabilityForActor(actor, { force = false } = {}) {
       settlement,
       at: Date.now()
     });
-
-    if (game.settings.get(MODULE_ID, "chatAvailability")) {
-      await postAvailabilityChat(actor, results);
-    }
   }
 
   return results;
@@ -1865,8 +1931,7 @@ function merchantHasAvailableItem(merchant, item) {
     const flags = getItemPileData(merchantItem);
     if (flags.hidden || flags.notForSale) return false;
 
-    const availability = getProperty(merchantItem, MODULE_AVAILABILITY, null);
-    return availability?.available || isInfiniteQuantity(getPileData(merchant), flags) || getItemQuantity(merchantItem) > 0;
+    return isInfiniteQuantity(getPileData(merchant), flags) || getItemQuantity(merchantItem) > 0;
   });
 }
 
@@ -2026,38 +2091,6 @@ async function postNegotiationChat({
   });
 }
 
-async function postAvailabilityChat(actor, results) {
-  const rows = results.map(result => `
-    <tr>
-      <td>${result.item}</td>
-      <td>${result.available ? game.i18n.localize("WFRP4PR.Chat.Available") : game.i18n.localize("WFRP4PR.Chat.Unavailable")}</td>
-      <td>${result.roll}/${result.test}</td>
-      <td>${result.stock === "infinite" ? "\u221e" : result.stock}</td>
-    </tr>
-  `).join("");
-
-  const content = `
-    <div class="wfrp4pr-card">
-      <h3>${game.i18n.localize("WFRP4PR.Chat.AvailabilityTitle")}: ${actor.name}</h3>
-      <table>
-        <tr>
-          <th>${game.i18n.localize("Item")}</th>
-          <th>${game.i18n.localize("Status")}</th>
-          <th>${game.i18n.localize("WFRP4PR.Chat.Roll")}</th>
-          <th>${game.i18n.localize("WFRP4PR.Chat.Stock")}</th>
-        </tr>
-        ${rows}
-      </table>
-    </div>
-  `;
-
-  await ChatMessage.create({
-    speaker: { alias: actor.name },
-    content,
-    whisper: ChatMessage.getWhisperRecipients("GM").map(user => user.id)
-  });
-}
-
 function isItemPilesMerchant(actor) {
   if (!actor) return false;
 
@@ -2099,6 +2132,19 @@ function getItemPriceBP(item) {
 }
 
 function getDisplayedTradePriceBP({ item, merchant, actor, mode, quantity }) {
+  const nativePrices = game.itempiles?.API?.getPricesForItem;
+  if (nativePrices) {
+    const prices = nativePrices.call(game.itempiles.API, item, {
+      seller: mode === "buy" ? merchant : actor,
+      buyer: mode === "buy" ? actor : merchant,
+      quantity
+    });
+    const price = prices[0];
+    if (!price || !Number.isFinite(price.totalCost)) {
+      throw new Error(game.i18n.localize("WFRP4PR.Error.InvalidMoney"));
+    }
+    return Math.max(0, Math.round(price.totalCost));
+  }
   const itemFlagData = getItemPileData(item);
   if (itemFlagData.free) return 0;
 

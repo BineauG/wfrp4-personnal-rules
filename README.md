@@ -33,17 +33,27 @@ Le module intercepte les achats et ventes entre un acteur joueur et un marchand 
 ### Configuration de negociation
 
 - La negociation peut etre activee ou desactivee globalement dans les parametres du module.
-- Chaque acteur marchand dispose aussi d'une case de configuration pour activer ou desactiver la negociation uniquement pour lui.
+- Chaque acteur marchand dispose aussi d'une case de configuration pour activer ou desactiver la negociation uniquement pour lui, dans **Other Settings**. Aucun champ du module n'est ajoute dans **Main Settings**.
+
+### Integration Item Piles (1.1.6)
+
+- Les prix de base proviennent de l'API publique Item Piles, y compris ses modificateurs par objet, acteur et type.
+- Dans un panier mixte, choisir de ne pas negocier ne retraite plus les articles deja achetes. Chaque ligne est finalisee avant la suivante. Annuler une ligne n'annule pas les lignes precedemment finalisees.
+- Les echanges negocies sont serialises cote MJ. Le joueur attend leur resultat reel ; une annulation du jet marchand lui est signalee.
+- Pour conserver les services, macros, journal d'activite, prix alternatifs, frais supplementaires, devises personnalisees et coffres, les paniers qui en dependent sont entierement confies au traitement natif Item Piles, **sans negociation**, avec une notification. Aucun prix ou flag de marchand n'est modifie temporairement.
+- Les echanges simples negocies conservent le transfert personnalise. Ils ne declenchent pas les hooks natifs de transaction Item Piles et ne disposent pas d'un rollback global en cas d'erreur d'ecriture. Cette version ne reproduit pas le moteur transactionnel d'Item Piles.
+- Un ancien resultat de disponibilite positif ne suffit plus a considerer un article epuise comme present en stock.
 
 ## Disponibilite des objets
 
 Quand un PNJ marchand Item Piles est cree ou configure, le module peut lancer automatiquement les tests de disponibilite WFRP4E pour ses objets.
 
-- La taille de localite par defaut se regle dans les parametres du module.
-- La taille de localite peut aussi etre modifiee dans l'interface de configuration du vendeur.
-- Changer la localite d'un vendeur relance la disponibilite de ses articles.
+- Les reglages globaux de localite et de modificateur restent enregistres mais sont caches ; leurs valeurs par defaut sont **Town** et **0**. Les valeurs deja enregistrees sont conservees.
+- Le MJ regle la localite dans **Other Settings** de la configuration du marchand, ou directement dans l'onglet **Settings** a cote de sa description.
+- Les modifications sont enregistrees immediatement. Changer la localite relance la disponibilite de tous ses articles eligibles, meme si les tests automatiques sont desactives. Les quantites existantes sont remplacees par le nouveau stock.
+- Un seul MJ execute chaque relance, meme lorsque plusieurs MJ sont connectes.
 - Les objets indisponibles peuvent etre marques comme non vendables, et eventuellement masques.
-- Un resume peut etre poste dans le chat pour le MJ.
+- Aucun resume de disponibilite n'est publie dans le chat ; l'option correspondante a ete supprimee.
 
 ## Difficultes personnalisees
 
@@ -95,8 +105,15 @@ Aucune dependance a installer. Verification avec Node.js :
 
 ```sh
 node --check scripts/main.js
-node --test tests/money.test.cjs
+node --test tests/*.test.cjs
 ```
+
+Le test visuel optionnel des panneaux marchands utilise Playwright : definir
+`MERCHANT_UI_TEST=1` avec Playwright disponible dans `NODE_PATH`, puis lancer
+`node --test tests/merchant-ui.test.cjs`. Il utilise une maquette DOM Item Piles
+3.3.4 dans Edge headless, sans connexion a un monde. `MERCHANT_UI_CHANNEL`
+permet de choisir un autre navigateur Playwright ; `ITEM_PILES_CSS` et
+`MERCHANT_UI_SCREENSHOT` permettent de charger le CSS installe et conserver une capture.
 
 API de macros : `game.modules.get("wfrp4-personnal-rules").api` (`rollAvailability`, `negotiateTrade`, `configureDoor`).
 

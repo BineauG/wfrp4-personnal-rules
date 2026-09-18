@@ -27,6 +27,57 @@
   font-style: italic;
 }
 
+.item-piles-app .wfrp4pr-merchant-settings {
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0.75rem 0;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--color-border-light-primary, #aaa);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.item-piles-app .wfrp4pr-merchant-settings label {
+  margin: 0;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.item-piles-app .wfrp4pr-merchant-toggle {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.item-piles-app .wfrp4pr-merchant-toggle input {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+
+.item-piles-app .wfrp4pr-merchant-settlement {
+  flex-direction: column;
+}
+
+.item-piles-app .wfrp4pr-merchant-settlement select {
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+}
+
+.item-piles-app .wfrp4pr-merchant-settings .notes {
+  margin: 0;
+  font-size: 0.85em;
+  line-height: 1.35;
+  white-space: normal;
+}
+
 .wfrp4pr-pool-hidden { display: none !important; }
 
 .wfrp4pr-channelling .wfrp4pr-lore-name {
