@@ -37,6 +37,10 @@ Le module intercepte les achats et ventes entre un acteur joueur et un marchand 
 
 ### Integration Item Piles (1.1.6)
 
+Correctif 1.1.7 : les reglages observent la fenetre Svelte effectivement montee,
+et non le fragment HTML vide transmis par les hooks Foundry. Le test navigateur
+reproduit ce comportement pour les deux panneaux marchands.
+
 - Les prix de base proviennent de l'API publique Item Piles, y compris ses modificateurs par objet, acteur et type.
 - Dans un panier mixte, choisir de ne pas negocier ne retraite plus les articles deja achetes. Chaque ligne est finalisee avant la suivante. Annuler une ligne n'annule pas les lignes precedemment finalisees.
 - Les echanges negocies sont serialises cote MJ. Le joueur attend leur resultat reel ; une annulation du jet marchand lui est signalee.

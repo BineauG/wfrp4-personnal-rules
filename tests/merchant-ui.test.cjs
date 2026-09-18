@@ -12,6 +12,7 @@ test('merchant settings survive tab changes, stay out of Main and fit the narrow
   const browser = await chromium.launch({ channel: process.env.MERCHANT_UI_CHANNEL || 'msedge', headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 900, height: 720 } });
+    page.setDefaultTimeout(5000);
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.setContent('<style>body{font:14px sans-serif;background:#282828;color:#222;display:flex;gap:24px;padding:20px}.item-piles-app{background:#ece5d4;padding:16px;box-sizing:border-box}#config{width:430px}#shop{width:260px}.form-group{display:flex}nav{display:flex;gap:16px;margin-bottom:20px}h2{font-size:18px}select{font:inherit}</style><div id="config" class="item-piles-app"><h2>Merchant configuration</h2><nav><div data-tab="rest" class="active">Main Settings</div><div data-tab="rest">Other Settings</div></nav><form class="item-piles-config-container"><section class="tab-body"><div class="tab"><div class="form-group">Main setting</div></div></section></form></div><div id="shop" class="item-piles-app"><h2>Merchant sidebar</h2><nav>Description / Settings</nav><div class="merchant-description">Description</div></div>');
@@ -50,8 +51,12 @@ test('merchant settings survive tab changes, stay out of Main and fit the narrow
       registerMerchantConfigHooks();
       window.configApp = { id: 'item-pile-config-shop-random', options: { svelte: { props: { pileActor: shopActor } } } };
       window.shopApp = { id: 'item-pile-merchant-shop-random', merchant: shopActor };
-      Hooks.emit('renderApplication', configApp, document.querySelector('#config'));
-      Hooks.emit('renderApplication', shopApp, document.querySelector('#shop'));
+      configApp.element = { 0: document.querySelector('#config'), jquery: '3.7.1' };
+      shopApp.element = { 0: document.querySelector('#shop'), jquery: '3.7.1' };
+      // SvelteApp._renderInner returns an empty jQuery-wrapped fragment.
+      // The visible shell is mounted separately and exposed by app.element.
+      Hooks.emit('renderApplication', configApp, { 0: document.createDocumentFragment(), jquery: '3.7.1' });
+      Hooks.emit('renderApplication', shopApp, { 0: document.createDocumentFragment(), jquery: '3.7.1' });
     });
     assert.equal(await page.locator('.wfrp4pr-merchant-settings').count(), 0);
     await page.evaluate(() => {

@@ -399,7 +399,11 @@ function registerMerchantConfigHooks() {
     const merchant = app?.id?.startsWith("item-pile-merchant-");
     if (!game.user.isGM || (!config && !merchant)) return;
     const actor = config ? getItemPileConfigActor(app) : app.merchant;
-    const root = getHtmlElement(html) || getHtmlElement(app.element);
+    // SvelteApp sends an empty fragment to Foundry render hooks. Its actual
+    // mounted shell is app.element; observing the fragment never sees tabs.
+    const root = [app.element, app.svelte?.appShell?.elementRoot, html]
+      .map(getHtmlElement)
+      .find(element => element?.nodeType === 1 && element.isConnected);
     if (!actor || !root?.querySelectorAll) return;
     merchantConfigObservers.get(app)?.observer.disconnect();
     const refresh = () => injectMerchantSettings(root, actor, { config });
