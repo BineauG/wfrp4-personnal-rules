@@ -1,7 +1,7 @@
 {
   "id": "wfrp4-personnal-rules",
   "title": "wfrp4-personnal-rules",
-  "version": "1.1.7",
+  "version": "1.2.0",
   "description": "Personal WFRP4E rules for Item Piles merchants, availability, locked doors, and custom difficulties.",
   "authors": [
     {
@@ -14,7 +14,8 @@
   },
   "esmodules": [
     "scripts/main.js",
-    "scripts/channeling-pool.js"
+    "scripts/channeling-pool.js",
+    "scripts/light-sources.js"
   ],
   "styles": [
     "styles/wfrp4-personnal-rules.css"

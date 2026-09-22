@@ -99,6 +99,18 @@ Quand un joueur clique sur une porte verrouillee, le module ouvre une boite de d
 - Pour enfoncer une porte, le module applique `Bonus de Force + DR`, plus la moitie des degats de l'arme si une arme est utilisee, puis compare au `TB` de la porte.
 - Quand les Blessures de la porte tombent a 0, la porte s'ouvre automatiquement.
 
+
+## Sources de lumière (1.2.0)
+
+- Le MJ ouvre un objet physique (torche, lanterne, arme, etc.), onglet **Details**, puis coche **Cet objet émet de la lumière** et indique les rayons **vive** et **faible**. Cliquer sur **Enregistrer la lumière**.
+- Les rayons sont exprimés dans l'unité de distance de la scène. La portée faible est le rayon total, pas une distance ajoutée à la portée vive. Pour une lumière entièrement vive, indiquer deux valeurs égales.
+- Le joueur utilise **Allumer / Éteindre** dans les détails de l'objet possédé, ou l'icône d'ampoule de sa ligne d'inventaire (déplier la catégorie si nécessaire).
+- Le token sélectionné de ce personnage est utilisé. À défaut, son unique token sur la scène est utilisé. S'il y en a plusieurs, sélectionner celui à éclairer ; aucun changement n'est appliqué au prototype ni aux autres tokens.
+- Une seule source est active par token. Une nouvelle source remplace la précédente ; éteindre restaure les portées d'origine. Les changements manuels effectués entre-temps sont préservés, de même que la couleur, l'animation et la vision du token.
+- Modifier les portées d'une source allumée actualise sa lumière. La désactiver, supprimer l'objet, le transférer entièrement ou ramener sa quantité à zéro éteint sa lumière.
+- Aucun combustible, durée ou consommation automatique n'est ajouté. Les distances sont définies par le MJ, sans valeur imposée pour les torches.
+- API de macro : `game.modules.get("wfrp4-personnal-rules").api.lightSources.toggle(item)`, où `item` est l'objet possédé.
+
 ## Monnaie
 
 Les soldes des deux acteurs sont calcules et verifies avant tout transfert. Si les denominations presentes ne permettent pas de representer exactement un solde, l'echange est annule sans deplacer les objets ni la monnaie. Ajoutez a l'acteur un objet de monnaie valant 1 penny, meme de quantite nulle, pour permettre le rendu exact. Les marchands a monnaie infinie restent pris en charge.
