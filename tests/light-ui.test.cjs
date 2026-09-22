@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-test('light controls render on real sheet roots and a player toggles from item or inventory', {
+test('light fields autosave and players use a native-style inventory effect button only', {
   skip: !process.env.LIGHT_UI_TEST, timeout: 30000
 }, async () => {
   const { chromium } = require('playwright');
@@ -31,6 +31,8 @@ test('light controls render on real sheet roots and a player toggles from item o
         async setFlag(ns, key, value) {
           (this.flags[ns] ||= {})[key] = value;
           await Hooks.emit('updateItem', this, { flags: { [ns]: { [key]: value } } }, {}, 'owner');
+          await itemApp.render();
+          await Hooks.emit('renderApplicationV2', actorApp, document.createDocumentFragment());
         }
       };
       hero.items = [torch];
@@ -61,25 +63,43 @@ test('light controls render on real sheet roots and a player toggles from item o
     await page.addScriptTag({ content: fs.readFileSync(path.join(__dirname, '../scripts/light-sources.js'), 'utf8') });
     await page.evaluate(async () => { await Hooks.emit('ready'); await itemApp.render(); });
     await page.locator('[data-light-field="enabled"]').check();
+    await page.waitForFunction(() => torch.getFlag('wfrp4-personnal-rules', 'lightSource')?.enabled);
     await page.locator('[data-light-field="bright"]').fill('3');
+    await page.locator('[data-light-field="bright"]').blur();
+    await page.waitForFunction(() => torch.getFlag('wfrp4-personnal-rules', 'lightSource')?.bright === 3);
     await page.locator('[data-light-field="dim"]').fill('6');
-    await page.getByRole('button', { name: 'Enregistrer la lumière' }).click();
+    await page.locator('[data-light-field="dim"]').blur();
+    await page.waitForFunction(() => torch.getFlag('wfrp4-personnal-rules', 'lightSource')?.dim === 6);
     assert.equal(await page.evaluate(() => torch.getFlag('wfrp4-personnal-rules', 'lightSource').dim), 6);
     assert.equal(await page.evaluate(() => nativeChanges), 0);
     await page.evaluate(() => Hooks.emit('renderApplicationV2', actorApp, document.createDocumentFragment()));
     assert.equal(await page.locator('#actor .wfrp4pr-light-toggle').count(), 1);
+    assert.equal(await page.locator('#item button').count(), 0);
+    assert.equal(await page.locator('.form-group .form-fields [data-light-field]').count(), 3);
+    assert.equal(await page.locator('#actor .list-controls button').count(), 0);
+    assert.equal(await page.locator('#actor .sheet-effect-buttons .wfrp4pr-light-toggle').innerText(), 'Light');
+    assert.equal(await page.locator('#actor .wfrp4pr-light-toggle i').count(), 0);
+    // Existing manual effects must survive reinjection.
+    await page.evaluate(() => {
+      const effect = document.createElement('button');
+      effect.className = 'native-effect';
+      effect.textContent = 'Manual effect';
+      document.querySelector('#actor .sheet-effect-buttons').prepend(effect);
+    });
     if (process.env.LIGHT_UI_SCREENSHOT) await page.screenshot({ path: process.env.LIGHT_UI_SCREENSHOT });
     await page.evaluate(async () => { game.user.isGM = false; await itemApp.render(); });
     assert.equal(await page.locator('[data-light-field]').count(), 0);
     await page.locator('#actor .wfrp4pr-light-toggle').click();
     assert.deepEqual(errors, []);
     assert.equal(await page.evaluate(() => token.light.dim), 6);
-    assert.equal(await page.locator('#item .wfrp4pr-light-toggle').innerText(), 'Éteindre');
-    await page.locator('#item .wfrp4pr-light-toggle').click();
+    assert.equal(await page.locator('#actor .wfrp4pr-light-toggle').getAttribute('aria-pressed'), 'true');
+    assert.equal(await page.locator('#item .wfrp4pr-light-toggle').count(), 0);
+    await page.locator('#actor .wfrp4pr-light-toggle').click();
     assert.equal(await page.evaluate(() => token.light.dim), 0);
     assert.equal(await page.locator('#actor .wfrp4pr-light-toggle').getAttribute('aria-pressed'), 'false');
     await page.evaluate(() => Hooks.emit('renderApplicationV2', actorApp, actorApp.element));
     assert.equal(await page.locator('#actor .wfrp4pr-light-toggle').count(), 1);
+    assert.equal(await page.locator('#actor .native-effect').count(), 1);
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

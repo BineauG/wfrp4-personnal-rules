@@ -14,10 +14,10 @@
     return { enabled: data.enabled === true, bright: Number(data.bright ?? 0), dim: Number(data.dim ?? 0) };
   }
 
-  function validateConfig(data) {
+  function validateConfig(data, complete = true) {
     const config = { enabled: data.enabled === true, bright: Number(data.bright), dim: Number(data.dim) };
     if (![config.bright, config.dim].every(value => Number.isFinite(value) && value >= 0)
-      || config.bright > config.dim || (config.enabled && config.dim <= 0)) fail("InvalidRange");
+      || (complete && (config.bright > config.dim || (config.enabled && config.dim <= 0)))) fail("InvalidRange");
     return config;
   }
 
@@ -118,6 +118,9 @@
       if (deleted || !getConfig(item).enabled || Number(item.system?.quantity?.value ?? 1) <= 0) {
         await extinguish(token);
       } else {
+        // Blur-saving permits an intermediate pair of radii while editing.
+        // Keep the last valid light until both fields form a usable range.
+        try { validateConfig(getConfig(item)); } catch { return; }
         await illuminate(token, item);
       }
     })));
@@ -129,10 +132,10 @@
       .find(node => node?.nodeType === 1 && node.isConnected);
   }
 
-  function makeButton(item, compact = false) {
+  function makeButton(item) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "wfrp4pr-light-toggle" + (compact ? " wfrp4pr-light-compact" : "");
+    button.className = "wfrp4pr-light-toggle";
     button.dataset.lightItem = item.id;
     button.addEventListener("click", async event => {
       event.preventDefault();
@@ -154,11 +157,7 @@
         let token;
         try { token = resolveToken(item.actor); } catch { /* No token yet, explain on click. */ }
         const active = isActive(token, item);
-        if (button.classList.contains("wfrp4pr-light-compact")) {
-          const icon = document.createElement("i");
-          icon.className = active ? "fa-solid fa-lightbulb" : "fa-regular fa-lightbulb";
-          button.replaceChildren(icon);
-        } else button.textContent = t(active ? "Off" : "On");
+        button.textContent = "Light";
         button.title = item.name + " — " + t(active ? "Off" : "On");
         button.setAttribute("aria-label", button.title);
         button.setAttribute("aria-pressed", String(active));
@@ -176,41 +175,46 @@
       root.querySelector(".wfrp4pr-light-config")?.remove();
       const config = getConfig(item);
       if (!game.user.isGM && !config.enabled) return;
-      const section = document.createElement("fieldset");
+      const section = document.createElement("div");
       section.className = "wfrp4pr-light-config";
-      // Item sheets auto-submit native fields on change. Keep our draft local
-      // until Save, otherwise that re-render would discard unsaved radii.
+      // Save only the changed module field, without submitting native fields twice.
       section.addEventListener("change", event => event.stopPropagation());
-      const legend = document.createElement("legend");
+      const legend = document.createElement("h3");
       legend.textContent = t("Title");
       section.append(legend);
       if (game.user.isGM && item.isOwner) {
         for (const [key, label] of [["enabled", "Enabled"], ["bright", "Bright"], ["dim", "Dim"]]) {
-          const row = document.createElement("label");
-          const title = document.createElement("span");
+          const row = document.createElement("div");
+          row.className = "form-group";
+          const title = document.createElement("label");
           title.textContent = t(label);
           const input = document.createElement("input");
-          input.dataset.lightField = key; // No name: do not join native sheet auto-submit.
+          input.dataset.lightField = key;
+          input.id = "wfrp4pr-light-" + (app.id || item.id) + "-" + key;
+          title.htmlFor = input.id;
           input.type = key === "enabled" ? "checkbox" : "number";
           if (key === "enabled") input.checked = config.enabled;
           else { input.min = "0"; input.step = "any"; input.value = String(config[key]); }
-          row.append(title, input);
+          input.addEventListener("change", async () => {
+            const value = key === "enabled" ? input.checked : input.valueAsNumber;
+            try {
+              await enqueue(item, async () => {
+                if (!game.user.isGM || !item.isOwner) fail("NoPermission");
+                const next = validateConfig({ ...getConfig(item), [key]: value }, false);
+                await item.setFlag(ID, CONFIG_KEY, next);
+              });
+            } catch (error) {
+              if (key === "enabled") input.checked = getConfig(item).enabled;
+              else input.value = String(getConfig(item)[key]);
+              ui.notifications.warn(error.message);
+            }
+          });
+          const fields = document.createElement("div");
+          fields.className = "form-fields";
+          fields.append(input);
+          row.append(title, fields);
           section.append(row);
         }
-        const save = document.createElement("button");
-        save.type = "button";
-        save.textContent = t("Save");
-        save.addEventListener("click", async event => {
-          event.preventDefault(); event.stopPropagation();
-          save.disabled = true;
-          try {
-            const value = key => section.querySelector('[data-light-field="' + key + '"]');
-            await configure(item, { enabled: value("enabled").checked, bright: value("bright").value, dim: value("dim").value });
-            app.render(false);
-          } catch (error) { ui.notifications.warn(error.message); }
-          finally { save.disabled = false; }
-        });
-        section.append(save);
       } else {
         const ranges = document.createElement("p");
         ranges.textContent = t("Bright") + ": " + config.bright + " / " + t("Dim") + ": " + config.dim;
@@ -220,18 +224,26 @@
       hint.className = "notes";
       hint.textContent = t("Hint");
       section.append(hint);
-      if (config.enabled && item.actor?.isOwner && item.isOwner) section.append(makeButton(item));
       target.append(section);
       sheets.set(app, { root, item });
     } else {
       const actor = app.actor || (app.document?.documentName === "Actor" ? app.document : null);
       if (!actor?.isOwner) return;
       for (const button of root.querySelectorAll(".wfrp4pr-light-toggle")) button.remove();
+      for (const group of root.querySelectorAll("[data-light-buttons]")) {
+        if (!group.children.length) group.remove();
+      }
       for (const row of root.querySelectorAll(".sheet-list.inventory .list-row[data-uuid]")) {
         const entry = Array.from(actor.items).find(item => item.uuid === row.dataset.uuid);
         if (!entry || !getConfig(entry).enabled) continue;
-        const controls = row.querySelector(".row-content .list-controls");
-        controls?.prepend(makeButton(entry, true));
+        let controls = row.querySelector(".sheet-effect-buttons");
+        if (!controls) {
+          controls = document.createElement("div");
+          controls.className = "sheet-effect-buttons";
+          controls.dataset.lightButtons = "";
+          row.append(controls);
+        }
+        controls.append(makeButton(entry));
       }
       sheets.set(app, { root, actor });
     }

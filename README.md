@@ -100,11 +100,12 @@ Quand un joueur clique sur une porte verrouillee, le module ouvre une boite de d
 - Quand les Blessures de la porte tombent a 0, la porte s'ouvre automatiquement.
 
 
-## Sources de lumière (1.2.0)
+## Sources de lumière (1.2.1)
 
-- Le MJ ouvre un objet physique (torche, lanterne, arme, etc.), onglet **Details**, puis coche **Cet objet émet de la lumière** et indique les rayons **vive** et **faible**. Cliquer sur **Enregistrer la lumière**.
+- Le MJ ouvre un objet physique (torche, lanterne, arme, etc.), onglet **Details**, puis coche **Cet objet émet de la lumière** et indique les rayons **vive** et **faible**. Chaque champ est enregistré automatiquement à sa sortie, sans bouton de sauvegarde.
 - Les rayons sont exprimés dans l'unité de distance de la scène. La portée faible est le rayon total, pas une distance ajoutée à la portée vive. Pour une lumière entièrement vive, indiquer deux valeurs égales.
-- Le joueur utilise **Allumer / Éteindre** dans les détails de l'objet possédé, ou l'icône d'ampoule de sa ligne d'inventaire (déplier la catégorie si nécessaire).
+- Le joueur utilise le bouton **Light** sous l'objet dans l'inventaire, dans la même zone que les effets manuels. Un clic allume, un second éteint ; le bouton est coloré lorsque la source est active. Aucune commande n'est ajoutée dans la fiche de l'objet.
+- Les portées peuvent être saisies dans n'importe quel ordre. Une paire provisoirement incomplète est enregistrée mais ne peut pas allumer la source ; si elle est déjà allumée, la dernière lumière valide est conservée jusqu'à une saisie cohérente.
 - Le token sélectionné de ce personnage est utilisé. À défaut, son unique token sur la scène est utilisé. S'il y en a plusieurs, sélectionner celui à éclairer ; aucun changement n'est appliqué au prototype ni aux autres tokens.
 - Une seule source est active par token. Une nouvelle source remplace la précédente ; éteindre restaure les portées d'origine. Les changements manuels effectués entre-temps sont préservés, de même que la couleur, l'animation et la vision du token.
 - Modifier les portées d'une source allumée actualise sa lumière. La désactiver, supprimer l'objet, le transférer entièrement ou ramener sa quantité à zéro éteint sa lumière.

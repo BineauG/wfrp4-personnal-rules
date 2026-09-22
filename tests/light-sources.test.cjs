@@ -177,6 +177,23 @@ test('changing an active item radius updates tokens and keeps the original basel
   assert.equal(token.light.dim, 2);
 });
 
+test('intermediate blur-saved ranges preserve active lighting until both radii are usable', async () => {
+  const { api, item, token, emit, errors } = harness();
+  await api.toggle(item);
+  item.flags[ID].lightSource.bright = 9;
+  const changes = { flags: { [ID]: { lightSource: {} } } };
+  await emit('updateItem', item, changes, {}, 'owner');
+  assert.equal(token.light.bright, 3);
+  assert.equal(token.light.dim, 6);
+  item.flags[ID].lightSource.dim = 12;
+  await emit('updateItem', item, changes, {}, 'owner');
+  assert.equal(token.light.bright, 9);
+  assert.equal(token.light.dim, 12);
+  assert.deepEqual(errors, []);
+  await api.toggle(item);
+  assert.equal(token.light.dim, 2);
+});
+
 test('deletion, transfer to zero and disabling restore active light on all matching scenes', async () => {
   for (const action of ['delete', 'empty', 'disable']) {
     const { api, item, actor, token, makeToken, emit, env } = harness();
