@@ -75,6 +75,8 @@ test('light fields autosave and players use a native-style inventory effect butt
     await page.evaluate(() => Hooks.emit('renderApplicationV2', actorApp, document.createDocumentFragment()));
     assert.equal(await page.locator('#actor .wfrp4pr-light-toggle').count(), 1);
     assert.equal(await page.locator('#item button').count(), 0);
+    assert.equal(await page.locator('#item fieldset.wfrp4pr-light-config > legend').innerText(), 'Source de lumière');
+    assert.equal(await page.locator('#item .wfrp4pr-light-config').evaluate(element => getComputedStyle(element).rowGap), '8px');
     assert.equal(await page.locator('.form-group .form-fields [data-light-field]').count(), 3);
     assert.equal(await page.locator('#actor .list-controls button').count(), 0);
     assert.equal(await page.locator('#actor .sheet-effect-buttons .wfrp4pr-light-toggle').innerText(), 'Light');

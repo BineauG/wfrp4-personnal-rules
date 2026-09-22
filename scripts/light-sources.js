@@ -175,11 +175,11 @@
       root.querySelector(".wfrp4pr-light-config")?.remove();
       const config = getConfig(item);
       if (!game.user.isGM && !config.enabled) return;
-      const section = document.createElement("div");
+      const section = document.createElement("fieldset");
       section.className = "wfrp4pr-light-config";
       // Save only the changed module field, without submitting native fields twice.
       section.addEventListener("change", event => event.stopPropagation());
-      const legend = document.createElement("h3");
+      const legend = document.createElement("legend");
       legend.textContent = t("Title");
       section.append(legend);
       if (game.user.isGM && item.isOwner) {
